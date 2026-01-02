@@ -89,9 +89,17 @@ def get_dashboard_kpis():
     # Job subsets
     # -----------------------------------
     completed_statuses = ["complete unrated", "complete rated"]
-    df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()
+    df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()# -----------------------------------
 
-    # -----------------------------------
+    central = ZoneInfo("America/Chicago")
+    now_central = datetime.now(central)
+    start_of_year_central = datetime(now_central.year, 1, 1, tzinfo=central)
+
+    start_of_year_utc = start_of_year_central.astimezone(ZoneInfo("UTC"))
+
+    df_completed = df_completed[df_completed["completed_at"] >= start_of_year_utc].copy()
+
+   # -----------------------------------
     # First-Time Completion KPI
     # Definition used here:
     # Completed jobs that had exactly 1 appointment.
