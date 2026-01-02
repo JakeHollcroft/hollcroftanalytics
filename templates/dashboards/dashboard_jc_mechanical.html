@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>JC Mechanical Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -12,11 +14,14 @@
         }
         header {
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 20px;
         }
         h1 {
             margin: 0;
+            font-size: 1.8rem;
         }
         .logout-btn {
             padding: 6px 12px;
@@ -25,6 +30,7 @@
             text-decoration: none;
             border-radius: 4px;
             font-size: 14px;
+            margin-top: 10px;
         }
         .logout-btn:hover {
             background-color: #c9302c;
@@ -32,23 +38,23 @@
         .kpi-container {
             display: flex;
             flex-wrap: wrap;
-            justify-content: space-around;
+            gap: 15px;
+            justify-content: center;
             margin-bottom: 20px;
         }
         .kpi-card {
             background: #ffffff;
             border: 1px solid #ccc;
             border-radius: 8px;
-            padding: 10px;
+            padding: 15px;
             text-align: center;
-            width: 28%;
-            margin-bottom: 10px;
+            flex: 1 1 200px;
+            max-width: 300px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         .kpi-card h2 {
-            margin: 0;
+            margin: 0 0 6px;
             font-size: 16px;
-            margin-bottom: 4px;
         }
         .kpi-card p {
             margin: 0;
@@ -64,8 +70,9 @@
         }
         th, td {
             border: 1px solid #ccc;
-            padding: 10px;
+            padding: 8px;
             text-align: left;
+            font-size: 0.9rem;
         }
         th {
             background-color: #e8e8f0;
@@ -73,13 +80,13 @@
         caption {
             caption-side: top;
             text-align: left;
-            font-size: 20px;
+            font-size: 1.2rem;
             margin-bottom: 10px;
             font-weight: bold;
         }
         footer {
             text-align: center;
-            margin-top: 5px;
+            margin-top: 15px;
             color: gray;
         }
         pre.ingest-log {
@@ -88,27 +95,46 @@
             padding: 10px;
             margin-bottom: 20px;
             overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         .accordion-body {
             overflow-x: auto;
-}
-.highlight-orange {
-    background-color: #da6b09; 
-    color: white;
-}
+        }
+        .highlight-orange { background-color: #da6b09; color: white; }
+        .highlight-yellow { background-color: #fff9c4; }
+        .highlight-green { background-color: #d4edda; }
+        .highlight-red { background-color: #9f0a0a; color: white; }
 
-.highlight-yellow {
-    background-color: #fff9c4; 
-}
+        /* Make images responsive */
+        .dashboard-logo {
+            max-width: 200px;
+            width: 100%;
+            height: auto;
+        }
 
-.highlight-green {
-    background-color: #d4edda; 
-}
-.highlight-red {
-    background-color: #9f0a0a; 
-    color: white;
-}
+        /* Responsive buttons */
+        form button {
+            width: 100%;
+            max-width: 200px;
+            margin: 10px auto;
+            display: block;
+        }
 
+        @media (max-width: 768px) {
+            h1 { font-size: 1.5rem; }
+            .kpi-card p { font-size: 18px; }
+            th, td { font-size: 0.85rem; }
+        }
+
+        @media (max-width: 480px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .logout-btn { margin-top: 10px; }
+            .kpi-card { flex: 1 1 100%; max-width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -118,9 +144,8 @@
     <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
 </header>
 
-
-<div style="text-align: center; margin-bottom: 20px;">
-    <img src="{{ url_for('static', filename='logo.png') }}" alt="Company Logo" style="max-width: 200px; height: auto;">
+<div class="text-center mb-4">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Company Logo" class="dashboard-logo">
 </div>
 
 {% if ingest_log %}
@@ -171,37 +196,39 @@
 </div>
 
 <!-- Top Customers Table -->
-<table>
-    <caption>Top 10 Customers by Outstanding Invoice Amount</caption>
-    <thead>
-        <tr>
-            <th>Customer Name</th>
-            <th>Number of Invoices</th>
-            <th>Total Invoice Amount</th>
-            <th>Total Outstanding</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in top_customers %}
-        <tr class="
-        {% if row.num_invoices > 100 %}
-            highlight-orange
-        {% elif row.total_outstanding > 100000 %}
-            highlight-red
-        {% elif row.customer_name == 'Colby Wilson' %}
-            highlight-green
-        {% elif row.total_outstanding == row.total_invoice %}
-            highlight-yellow
-        {% endif %}
-    ">
-            <td>{{ row.customer_name }}</td>
-            <td>{{ row.num_invoices }}</td>
-            <td>${{ "{:,.2f}".format(row.total_invoice) }}</td>
-            <td>${{ "{:,.2f}".format(row.total_outstanding) }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<div class="table-responsive">
+    <table>
+        <caption>Top 10 Customers by Outstanding Invoice Amount</caption>
+        <thead>
+            <tr>
+                <th>Customer Name</th>
+                <th>Number of Invoices</th>
+                <th>Total Invoice Amount</th>
+                <th>Total Outstanding</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in top_customers %}
+            <tr class="
+            {% if row.num_invoices > 100 %}
+                highlight-orange
+            {% elif row.total_outstanding > 100000 %}
+                highlight-red
+            {% elif row.customer_name == 'Colby Wilson' %}
+                highlight-green
+            {% elif row.total_outstanding == row.total_invoice %}
+                highlight-yellow
+            {% endif %}
+        ">
+                <td>{{ row.customer_name }}</td>
+                <td>{{ row.num_invoices }}</td>
+                <td>${{ "{:,.2f}".format(row.total_invoice) }}</td>
+                <td>${{ "{:,.2f}".format(row.total_outstanding) }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
 
 <div class="accordion mb-4" id="rawDataAccordion">
 
@@ -218,26 +245,26 @@
              data-bs-parent="#rawDataAccordion">
             <div class="accordion-body">
                 <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            {% if raw_jobs %}
-                                {% for key in raw_jobs[0].keys() %}
-                                    <th>{{ key }}</th>
+                    <table>
+                        <thead>
+                            <tr>
+                                {% if raw_jobs %}
+                                    {% for key in raw_jobs[0].keys() %}
+                                        <th>{{ key }}</th>
+                                    {% endfor %}
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in raw_jobs %}
+                            <tr>
+                                {% for value in row.values() %}
+                                    <td>{{ value }}</td>
                                 {% endfor %}
-                            {% endif %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in raw_jobs %}
-                        <tr>
-                            {% for value in row.values() %}
-                                <td>{{ value }}</td>
+                            </tr>
                             {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -256,26 +283,26 @@
              data-bs-parent="#rawDataAccordion">
             <div class="accordion-body">
                 <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            {% if raw_customers %}
-                                {% for key in raw_customers[0].keys() %}
-                                    <th>{{ key }}</th>
+                    <table>
+                        <thead>
+                            <tr>
+                                {% if raw_customers %}
+                                    {% for key in raw_customers[0].keys() %}
+                                        <th>{{ key }}</th>
+                                    {% endfor %}
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in raw_customers %}
+                            <tr>
+                                {% for value in row.values() %}
+                                    <td>{{ value }}</td>
                                 {% endfor %}
-                            {% endif %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in raw_customers %}
-                        <tr>
-                            {% for value in row.values() %}
-                                <td>{{ value }}</td>
+                            </tr>
                             {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
                 </div>  
             </div>
         </div>
@@ -294,26 +321,26 @@
              data-bs-parent="#rawDataAccordion">
             <div class="accordion-body">
                 <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            {% if raw_invoices %}
-                                {% for key in raw_invoices[0].keys() %}
-                                    <th>{{ key }}</th>
+                    <table>
+                        <thead>
+                            <tr>
+                                {% if raw_invoices %}
+                                    {% for key in raw_invoices[0].keys() %}
+                                        <th>{{ key }}</th>
+                                    {% endfor %}
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in raw_invoices %}
+                            <tr>
+                                {% for value in row.values() %}
+                                    <td>{{ value }}</td>
                                 {% endfor %}
-                            {% endif %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in raw_invoices %}
-                        <tr>
-                            {% for value in row.values() %}
-                                <td>{{ value }}</td>
+                            </tr>
                             {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -321,29 +348,20 @@
 
 </div>
 
-
-
-<div style="text-align:center; margin-bottom: 15px;">
-    <p style="color:#666;">
-        Last refreshed: {{ last_refresh }}
-    </p>
+<div class="text-center mb-3">
+    <p class="text-muted">Last refreshed: {{ last_refresh }}</p>
 
     {% if can_refresh %}
         <form method="post" action="{{ url_for('refresh_jc_mechanical') }}">
-            <button type="submit">Refresh Data</button>
+            <button type="submit" class="btn btn-primary">Refresh Data</button>
         </form>
     {% else %}
-        <p style="color:#b94a48;">
-            Refresh available at {{ next_refresh }}
-        </p>
+        <p class="text-danger">Refresh available at {{ next_refresh }}</p>
     {% endif %}
 </div>
 
-<footer> &copy; 2025 Hollcroft Data Consulting</footer>
+<footer>&copy; 2025 Hollcroft Data Consulting</footer>
 
-<script
-  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
-</script>
-
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
