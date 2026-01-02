@@ -226,7 +226,6 @@
                     <th>Appointments</th>
                     <th>Status</th>
                     <th>Description</th>
-                    <th>Job ID</th>
                 </tr>
             </thead>
             <tbody>
@@ -238,7 +237,6 @@
                             <td><span class="badge text-bg-secondary">{{ r.num_appointments }}</span></td>
                             <td>{{ r.work_status }}</td>
                             <td style="max-width: 320px; white-space: normal;">{{ r.description }}</td>
-                            <td><code>{{ r.job_id }}</code></td>
                         </tr>
                     {% endfor %}
                 {% else %}
