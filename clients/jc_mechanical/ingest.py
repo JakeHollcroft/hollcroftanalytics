@@ -1,141 +1,374 @@
+# clients/jc_mechanical/ingest.py
+
+import os
+import time
+import random
 import duckdb
 import pandas as pd
 from datetime import datetime
 import requests
-from .config import DB_FILE, API_KEY  
+from requests.exceptions import (
+    HTTPError,
+    ConnectionError,
+    Timeout,
+    ChunkedEncodingError,
+    RequestException,
+)
+
+from .config import DB_FILE, API_KEY
 
 BASE_URL_JOBS = "https://api.housecallpro.com/jobs"
+BASE_URL_JOB_DETAIL = "https://api.housecallpro.com/jobs/{id}"
 BASE_URL_CUSTOMERS = "https://api.housecallpro.com/customers"
 BASE_URL_INVOICES = "https://api.housecallpro.com/invoices"
 
 HEADERS = {
     "Authorization": f"Token {API_KEY}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "HollcroftAnalytics/1.0 (+https://hollcroftanalytics.com)",
 }
+
+COMPLETED_STATUSES = {"complete unrated", "complete rated"}
+
+# ---- Retry / throttling controls (tune later) ----
+DETAIL_MAX_RETRIES = 6
+DETAIL_BASE_BACKOFF_SEC = 0.8
+DETAIL_JITTER_SEC = 0.35
+DETAIL_MIN_DELAY_EACH_CALL_SEC = 0.12
+DETAIL_BATCH_PAUSE_EVERY = 25
+DETAIL_BATCH_PAUSE_SEC = 0.8
+
+# Use connect timeout + read timeout
+REQUEST_TIMEOUT = (10, 45)
+
+# Reuse a session for connection pooling (reduces resets)
+SESSION = requests.Session()
+SESSION.headers.update(HEADERS)
+
+# Simple in-process guard to prevent overlapping runs
+_INGEST_RUNNING = False
+
 
 def fetch_all(endpoint, key_name, page_size=100):
     all_items = []
     page = 1
     while True:
         params = {"page": page, "page_size": page_size}
-        resp = requests.get(endpoint, headers=HEADERS, params=params, timeout=30)
+        resp = SESSION.get(endpoint, params=params, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
+
         data = resp.json()
         items = data.get(key_name, [])
         all_items.extend(items)
-        print(f"Fetched page {page} of {data.get('total_pages',1)} ({len(items)} items)")
-        if page >= data.get("total_pages",1):
+
+        print(f"Fetched page {page} of {data.get('total_pages', 1)} ({len(items)} items)")
+
+        if page >= data.get("total_pages", 1):
             break
         page += 1
+
     return all_items
+
+
+def fetch_job_details(job_id):
+    """
+    Robust job detail fetch w/ retry/backoff for:
+      - Connection reset / aborted connections
+      - Timeouts / chunked encoding errors
+      - 429 rate limits
+      - transient 5xx
+    Also handles expand parameter variations.
+    """
+    url = BASE_URL_JOB_DETAIL.format(id=job_id)
+
+    expand_params_primary = [("expand[]", "appointments")]
+    expand_params_fallback = {"expand": "appointments"}
+
+    last_err = None
+
+    for attempt in range(1, DETAIL_MAX_RETRIES + 1):
+        time.sleep(DETAIL_MIN_DELAY_EACH_CALL_SEC)
+
+        try:
+            resp = SESSION.get(url, params=expand_params_primary, timeout=REQUEST_TIMEOUT)
+
+            if resp.status_code == 400:
+                resp = SESSION.get(url, params=expand_params_fallback, timeout=REQUEST_TIMEOUT)
+
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    wait = float(retry_after)
+                else:
+                    wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
+                        0, DETAIL_JITTER_SEC
+                    )
+                print(
+                    f"Rate limited (429) on {job_id}. Sleeping {wait:.2f}s then retrying "
+                    f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+                )
+                time.sleep(wait)
+                continue
+
+            if resp.status_code in (500, 502, 503, 504):
+                wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
+                    0, DETAIL_JITTER_SEC
+                )
+                print(
+                    f"Server error {resp.status_code} on {job_id}. Sleeping {wait:.2f}s then retrying "
+                    f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+                )
+                time.sleep(wait)
+                continue
+
+            resp.raise_for_status()
+            return resp.json()
+
+        except (ConnectionError, Timeout, ChunkedEncodingError) as e:
+            last_err = e
+            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
+                0, DETAIL_JITTER_SEC
+            )
+            print(
+                f"Connection/timeout error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            )
+            time.sleep(wait)
+            continue
+
+        except HTTPError as e:
+            last_err = e
+            status = getattr(e.response, "status_code", None)
+            if status in (400, 401, 403, 404):
+                raise
+            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
+                0, DETAIL_JITTER_SEC
+            )
+            print(
+                f"HTTP error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            )
+            time.sleep(wait)
+            continue
+
+        except RequestException as e:
+            last_err = e
+            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
+                0, DETAIL_JITTER_SEC
+            )
+            print(
+                f"Request error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            )
+            time.sleep(wait)
+            continue
+
+    raise last_err if last_err else RuntimeError(f"Failed to fetch job details for {job_id}")
+
+
+def appointment_count_from_job(job_obj):
+    schedule = job_obj.get("schedule") or {}
+    appts = schedule.get("appointments")
+    if isinstance(appts, list):
+        return len(appts)
+
+    appts2 = job_obj.get("appointments")
+    if isinstance(appts2, list):
+        return len(appts2)
+
+    return 0
+
 
 def flatten_jobs(jobs):
     rows = []
     for job in jobs:
-        rows.append({
-            "job_id": job.get("id"),
-            "invoice_number": job.get("invoice_number"),
-            "description": job.get("description"),
-            "work_status": job.get("work_status"),
-            "total_amount": job.get("total_amount"),
-            "outstanding_balance": job.get("outstanding_balance"),
-            "company_name": job.get("company_name"),
-            "company_id": job.get("company_id"),
-            "created_at": job.get("created_at"),
-            "updated_at": job.get("updated_at"),
-            "customer_id": job.get("customer", {}).get("id") if job.get("customer") else None,
-            "customer_name": job.get("customer", {}).get("name") if job.get("customer") else None,
-        })
+        rows.append(
+            {
+                "job_id": job.get("id"),
+                "invoice_number": job.get("invoice_number"),
+                "description": job.get("description"),
+                "work_status": job.get("work_status"),
+                "total_amount": job.get("total_amount"),
+                "outstanding_balance": job.get("outstanding_balance"),
+                "company_name": job.get("company_name"),
+                "company_id": job.get("company_id"),
+                "created_at": job.get("created_at"),
+                "updated_at": job.get("updated_at"),
+                "completed_at": (job.get("work_timestamps") or {}).get("completed_at"),
+                "customer_id": (job.get("customer") or {}).get("id") if job.get("customer") else None,
+                # filled after detail fetch
+                "num_appointments": 0,
+            }
+        )
     return pd.DataFrame(rows)
+
 
 def flatten_customers(customers):
     rows = []
     for c in customers:
-        rows.append({
-            "customer_id": c.get("id"),
-            "first_name": c.get("first_name"),
-            "last_name": c.get("last_name"),
-            "email": c.get("email"),
-            "mobile_number": c.get("mobile_number"),
-            "home_number": c.get("home_number"),
-            "work_number": c.get("work_number"),
-            "company": c.get("company"),
-            "notifications_enabled": c.get("notifications_enabled"),
-            "lead_source": c.get("lead_source"),
-            "notes": c.get("notes"),
-            "created_at": c.get("created_at"),
-            "updated_at": c.get("updated_at"),
-            "company_name": c.get("company_name"),
-            "company_id": c.get("company_id"),
-            "tags": ",".join(c.get("tags", [])) if c.get("tags") else None
-        })
+        rows.append(
+            {
+                "customer_id": c.get("id"),
+                "first_name": c.get("first_name"),
+                "last_name": c.get("last_name"),
+                "email": c.get("email"),
+                "mobile_number": c.get("mobile_number"),
+                "home_number": c.get("home_number"),
+                "work_number": c.get("work_number"),
+                "company": c.get("company"),
+                "notifications_enabled": c.get("notifications_enabled"),
+                "lead_source": c.get("lead_source"),
+                "notes": c.get("notes"),
+                "created_at": c.get("created_at"),
+                "updated_at": c.get("updated_at"),
+                "company_name": c.get("company_name"),
+                "company_id": c.get("company_id"),
+                "tags": ",".join(c.get("tags", [])) if c.get("tags") else None,
+            }
+        )
     return pd.DataFrame(rows)
+
 
 def flatten_invoices(invoices):
     rows = []
     for inv in invoices:
-        rows.append({
-            "invoice_id": inv.get("id"),
-            "job_id": inv.get("job_id"),
-            "invoice_number": inv.get("invoice_number"),
-            "status": inv.get("status"),
-            "amount": inv.get("amount"),
-            "subtotal": inv.get("subtotal"),
-            "due_amount": inv.get("due_amount"),
-            "due_at": inv.get("due_at"),
-            "paid_at": inv.get("paid_at"),
-            "sent_at": inv.get("sent_at"),
-            "service_date": inv.get("service_date"),
-            "invoice_date": inv.get("invoice_date"),
-            "display_due_concept": inv.get("display_due_concept"),
-            "due_concept": inv.get("due_concept"),
-        })
+        rows.append(
+            {
+                "invoice_id": inv.get("id"),
+                "job_id": inv.get("job_id"),
+                "invoice_number": inv.get("invoice_number"),
+                "status": inv.get("status"),
+                "amount": inv.get("amount"),
+                "subtotal": inv.get("subtotal"),
+                "due_amount": inv.get("due_amount"),
+                "due_at": inv.get("due_at"),
+                "paid_at": inv.get("paid_at"),
+                "sent_at": inv.get("sent_at"),
+                "service_date": inv.get("service_date"),
+                "invoice_date": inv.get("invoice_date"),
+                "display_due_concept": inv.get("display_due_concept"),
+                "due_concept": inv.get("due_concept"),
+            }
+        )
     return pd.DataFrame(rows)
 
+
 def update_last_refresh(conn):
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS metadata (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
-
-    conn.execute("""
+        """
+    )
+    conn.execute(
+        """
         INSERT INTO metadata (key, value)
         VALUES ('last_refresh', ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    """, [datetime.utcnow().isoformat()])
+        """,
+        [datetime.utcnow().isoformat()],
+    )
 
 
 def run_ingestion():
-    print("Fetching Jobs...")
-    jobs_data = fetch_all(BASE_URL_JOBS, key_name="jobs", page_size=100)
-    df_jobs = flatten_jobs(jobs_data)
+    """
+    One ingestion run (safe to call from your Flask app thread).
+    """
+    global _INGEST_RUNNING
+    if _INGEST_RUNNING:
+        print("Ingestion already running, skipping this run.")
+        return
 
-    print("Fetching Customers...")
-    customers_data = fetch_all(BASE_URL_CUSTOMERS, key_name="customers", page_size=100)
-    df_customers = flatten_customers(customers_data)
+    _INGEST_RUNNING = True
+    try:
+        print("Fetching Jobs...")
+        jobs_data = fetch_all(BASE_URL_JOBS, key_name="jobs", page_size=100)
+        df_jobs = flatten_jobs(jobs_data)
 
-    print("Fetching Invoices...")
-    invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
-    df_invoices = flatten_invoices(invoices_data)
+        print("Fetching appointment counts for completed jobs (job detail endpoint)...")
+        appt_counts = {}
+        completed_ids = (
+            df_jobs[df_jobs["work_status"].isin(COMPLETED_STATUSES)]["job_id"]
+            .dropna()
+            .tolist()
+        )
 
-    # Connect to DuckDB
-    conn = duckdb.connect(DB_FILE)
+        for i, job_id in enumerate(completed_ids, start=1):
+            try:
+                detail = fetch_job_details(job_id)
+                appt_counts[job_id] = appointment_count_from_job(detail)
+                print(f"Fetched details for job {job_id} ({i}/{len(completed_ids)})")
+            except HTTPError as e:
+                print(f"Warning: HTTP error for {job_id}: {e}")
+                appt_counts[job_id] = 0
+            except Exception as e:
+                print(f"Warning: unexpected error for {job_id}: {e}")
+                appt_counts[job_id] = 0
 
-    # Write tables (replace existing if needed)
-    conn.execute("DROP TABLE IF EXISTS jobs")
-    conn.execute("CREATE TABLE jobs AS SELECT * FROM df_jobs")
+            if i % DETAIL_BATCH_PAUSE_EVERY == 0:
+                time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
-    conn.execute("DROP TABLE IF EXISTS customers")
-    conn.execute("CREATE TABLE customers AS SELECT * FROM df_customers")
+        df_jobs["num_appointments"] = (
+            df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
+        )
 
-    conn.execute("DROP TABLE IF EXISTS invoices")
-    conn.execute("CREATE TABLE invoices AS SELECT * FROM df_invoices")
-    update_last_refresh(conn)
-    conn.close()
-    print(f"Ingestion complete. Data saved to {DB_FILE}")
+        print("Fetching Customers...")
+        customers_data = fetch_all(BASE_URL_CUSTOMERS, key_name="customers", page_size=100)
+        df_customers = flatten_customers(customers_data)
+
+        print("Fetching Invoices...")
+        invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
+        df_invoices = flatten_invoices(invoices_data)
+
+        conn = duckdb.connect(DB_FILE)
+
+        conn.execute("DROP TABLE IF EXISTS jobs")
+        conn.execute("CREATE TABLE jobs AS SELECT * FROM df_jobs")
+
+        conn.execute("DROP TABLE IF EXISTS customers")
+        conn.execute("CREATE TABLE customers AS SELECT * FROM df_customers")
+
+        conn.execute("DROP TABLE IF EXISTS invoices")
+        conn.execute("CREATE TABLE invoices AS SELECT * FROM df_invoices")
+
+        update_last_refresh(conn)
+        conn.close()
+
+        print(f"Ingestion complete. Data saved to {DB_FILE}")
+
+    finally:
+        _INGEST_RUNNING = False
+
+
+def run_ingestion_forever(interval_seconds=3600):
+    """
+    Runs ingestion in a loop every interval_seconds (default 1 hour).
+    IMPORTANT: Use this in a separate worker process/service,
+    not inside the Flask web server process.
+    """
+    print(f"Starting ingestion loop: every {interval_seconds} seconds.")
+    while True:
+        start = time.time()
+        try:
+            run_ingestion()
+        except Exception as e:
+            print(f"Periodic ingestion error: {e}")
+
+        elapsed = time.time() - start
+        sleep_for = max(0, interval_seconds - elapsed)
+        print(f"Next run in {sleep_for:.0f}s.")
+        time.sleep(sleep_for)
 
 
 if __name__ == "__main__":
-    run_ingestion()
+    # If you run this file directly, you can choose:
+    # - one-shot: python -m clients.jc_mechanical.ingest
+    # - loop hourly: INGEST_LOOP=1 python -m clients.jc_mechanical.ingest
+    loop = os.environ.get("INGEST_LOOP", "").strip() == "1"
+    if loop:
+        run_ingestion_forever(interval_seconds=3600)
+    else:
+        run_ingestion()
