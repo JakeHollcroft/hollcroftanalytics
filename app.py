@@ -8,7 +8,7 @@ import subprocess
 import duckdb
 import os
 import threading
-
+import time
 
 from clients.jc_mechanical.ingest import run_ingestion
 from clients.jc_mechanical.config import DB_FILE
@@ -72,6 +72,38 @@ def init_db():
 init_db()
 
 TEMPLATES_DIR = BASE_DIR / "templates" / "dashboards"
+
+
+
+_scheduler_started = False
+
+def scheduler_loop(interval_seconds=3600):
+    # Optional: delay so app boots fully before first run
+    time.sleep(10)
+
+    while True:
+        start = time.time()
+        try:
+            print("[SCHEDULER] Starting ingestion...")
+            run_ingestion()
+            print("[SCHEDULER] Ingestion finished.")
+        except Exception as e:
+            print(f"[SCHEDULER] Ingestion error: {e}")
+
+        elapsed = time.time() - start
+        sleep_for = max(0, interval_seconds - elapsed)
+        print(f"[SCHEDULER] Next run in {sleep_for:.0f}s")
+        time.sleep(sleep_for)
+
+def start_scheduler():
+    global _scheduler_started
+    if _scheduler_started:
+        return
+
+    _scheduler_started = True
+    t = threading.Thread(target=scheduler_loop, args=(3600,), daemon=True)
+    t.start()
+    print("[SCHEDULER] Background scheduler started.")
 
 
 def create_dashboard_template(username):
@@ -262,6 +294,8 @@ def logout():
 
 # if __name__ == "__main__":
 #     app.run(debug=True)
+
+start_scheduler()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
