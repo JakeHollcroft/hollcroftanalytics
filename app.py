@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 import subprocess
 import duckdb
+import os
 import threading
 
 
