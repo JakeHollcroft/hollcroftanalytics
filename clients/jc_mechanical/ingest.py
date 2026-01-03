@@ -50,6 +50,22 @@ SESSION.headers.update(HEADERS)
 _INGEST_RUNNING = False
 
 
+def _ts():
+    # tiny helper for consistent logs
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _sleep_with_log(seconds: float, reason: str):
+    """
+    Centralized backoff sleep with a couple print statements so you can see
+    when you're backing off for rate limits / server errors / network issues.
+    """
+    seconds = max(0.0, float(seconds))
+    print(f"[{_ts()}] BACKOFF: {reason}")
+    print(f"[{_ts()}] Sleeping {seconds:.2f}s...")
+    time.sleep(seconds)
+
+
 def fetch_all(endpoint, key_name, page_size=100):
     all_items = []
     page = 1
@@ -88,38 +104,47 @@ def fetch_job_details(job_id):
     last_err = None
 
     for attempt in range(1, DETAIL_MAX_RETRIES + 1):
-        time.sleep(DETAIL_MIN_DELAY_EACH_CALL_SEC)
+        # Always throttle a bit between calls; log it occasionally for visibility
+        if DETAIL_MIN_DELAY_EACH_CALL_SEC > 0:
+            if attempt == 1:
+                print(
+                    f"[{_ts()}] Throttle: sleeping {DETAIL_MIN_DELAY_EACH_CALL_SEC:.2f}s "
+                    f"before detail call for job {job_id}"
+                )
+            time.sleep(DETAIL_MIN_DELAY_EACH_CALL_SEC)
 
         try:
             resp = SESSION.get(url, params=expand_params_primary, timeout=REQUEST_TIMEOUT)
 
             if resp.status_code == 400:
+                # Some endpoints accept expand=... instead of expand[]=...
                 resp = SESSION.get(url, params=expand_params_fallback, timeout=REQUEST_TIMEOUT)
 
+            # ---- 429 rate limit handling ----
             if resp.status_code == 429:
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
                     wait = float(retry_after)
+                    reason = f"429 rate limit for job {job_id} (Retry-After={retry_after}) (attempt {attempt}/{DETAIL_MAX_RETRIES})"
                 else:
                     wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                         0, DETAIL_JITTER_SEC
                     )
-                print(
-                    f"Rate limited (429) on {job_id}. Sleeping {wait:.2f}s then retrying "
-                    f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
-                )
-                time.sleep(wait)
+                    reason = f"429 rate limit for job {job_id} (no Retry-After) (attempt {attempt}/{DETAIL_MAX_RETRIES})"
+
+                _sleep_with_log(wait, reason)
                 continue
 
+            # ---- transient server errors ----
             if resp.status_code in (500, 502, 503, 504):
                 wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                     0, DETAIL_JITTER_SEC
                 )
-                print(
-                    f"Server error {resp.status_code} on {job_id}. Sleeping {wait:.2f}s then retrying "
-                    f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+                reason = (
+                    f"Server error {resp.status_code} for job {job_id} "
+                    f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
                 )
-                time.sleep(wait)
+                _sleep_with_log(wait, reason)
                 continue
 
             resp.raise_for_status()
@@ -130,26 +155,29 @@ def fetch_job_details(job_id):
             wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                 0, DETAIL_JITTER_SEC
             )
-            print(
-                f"Connection/timeout error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
-                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            reason = (
+                f"Network/timeout error for job {job_id}: {type(e).__name__}: {e} "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
             )
-            time.sleep(wait)
+            _sleep_with_log(wait, reason)
             continue
 
         except HTTPError as e:
             last_err = e
             status = getattr(e.response, "status_code", None)
+
+            # Do not retry on typical terminal errors
             if status in (400, 401, 403, 404):
                 raise
+
             wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                 0, DETAIL_JITTER_SEC
             )
-            print(
-                f"HTTP error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
-                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            reason = (
+                f"HTTP error for job {job_id}: status={status} {e} "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
             )
-            time.sleep(wait)
+            _sleep_with_log(wait, reason)
             continue
 
         except RequestException as e:
@@ -157,11 +185,11 @@ def fetch_job_details(job_id):
             wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                 0, DETAIL_JITTER_SEC
             )
-            print(
-                f"Request error on {job_id}: {e}. Sleeping {wait:.2f}s then retrying "
-                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})..."
+            reason = (
+                f"RequestException for job {job_id}: {type(e).__name__}: {e} "
+                f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
             )
-            time.sleep(wait)
+            _sleep_with_log(wait, reason)
             continue
 
     raise last_err if last_err else RuntimeError(f"Failed to fetch job details for {job_id}")
@@ -309,6 +337,11 @@ def run_ingestion():
                 appt_counts[job_id] = 0
 
             if i % DETAIL_BATCH_PAUSE_EVERY == 0:
+                # log batch throttling so it's visible in your console
+                print(
+                    f"[{_ts()}] Batch throttle: processed {i} detail calls; "
+                    f"sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s to ease rate limits"
+                )
                 time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
         df_jobs["num_appointments"] = (
