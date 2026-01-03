@@ -12,7 +12,7 @@
 
     <!-- Open Graph -->
     <meta property="og:title" content="Hollcroft Analytics | Data Analytics for Tulsa Businesses">
-    <meta property="og:description" content="Automated dashboards, KPI tracking, ETL pipelines, and API data ingestion for growing businesses in Tulsa, OK.">
+    <meta property="og:description" content="Automated dashboards, KPI tracking, ETL pipelines, API data ingestion for growing businesses in Tulsa, OK.">
     <meta property="og:type" content="website">
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,20 +38,16 @@
     <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
 </header>
 
-<!-- OPTIONAL: smaller centered logo under navbar (remove this block if you only want it in navbar) -->
-
-
-
 <main id="home">
 
     <!-- HERO SECTION -->
     <section class="hero">
         <h1>Data Analytics & KPI Dashboards for Tulsa Businesses</h1>
-            <img
-        src="{{ url_for('static', filename='hollcroft_analytics.png') }}"
-        alt="Hollcroft Analytics logo"
-        class="hero-logo"
-    />
+        <img
+            src="{{ url_for('static', filename='hollcroft_analytics.png') }}"
+            alt="Hollcroft Analytics logo"
+            class="hero-logo"
+        />
         <p>
             Hollcroft Analytics helps small and medium-sized businesses in Tulsa, Oklahoma
             turn raw data into actionable insights through automated ETL pipelines,
@@ -100,15 +96,183 @@
                 </p>
             </div>
         </div>
+
+        <!-- COMMON INTEGRATIONS -->
+        <div id="integrations" class="integrations">
+            <div class="integrations-head">
+                <div class="integrations-title">
+                    <h2>Common API Integrations</h2>
+                    <p>
+                        These are some of the platforms we commonly connect for Tulsa-area SMBs.
+                        If you use something else, we can usually integrate it (or stage it via CSV/SFTP/DB).
+                    </p>
+                </div>
+
+                <button class="integrations-toggle" type="button" aria-expanded="false">
+                    Show more
+                </button>
+            </div>
+
+            <div class="integrations-grid" data-collapsible="true">
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Field service and trades</h3>
+                        <div class="integration-sub">Jobs, invoices, customers, scheduling, dispatch</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Housecall Pro</span>
+                        <span class="pill">Jobber</span>
+                        <span class="pill">ServiceTitan</span>
+                        <span class="pill">Service Fusion</span>
+                        <span class="pill">FieldEdge</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Accounting and invoicing</h3>
+                        <div class="integration-sub">Invoices, payments, expenses, customers, P&amp;L</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">QuickBooks Online</span>
+                        <span class="pill">Xero</span>
+                        <span class="pill">FreshBooks</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Payments</h3>
+                        <div class="integration-sub">Payments, subscriptions, payouts, POS</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Stripe</span>
+                        <span class="pill">Square</span>
+                        <span class="pill">PayPal</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>CRM and sales</h3>
+                        <div class="integration-sub">Deals, pipelines, contacts, activity tracking</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">HubSpot</span>
+                        <span class="pill">Salesforce</span>
+                        <span class="pill">Pipedrive</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Ecommerce</h3>
+                        <div class="integration-sub">Orders, products, customers, refunds</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Shopify</span>
+                        <span class="pill">WooCommerce</span>
+                        <span class="pill">BigCommerce</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Marketing</h3>
+                        <div class="integration-sub">Traffic, ads performance, attribution, email revenue</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Google Analytics (GA4)</span>
+                        <span class="pill">Google Ads</span>
+                        <span class="pill">Meta Ads</span>
+                        <span class="pill">Mailchimp</span>
+                        <span class="pill">Klaviyo</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Support and comms</h3>
+                        <div class="integration-sub">Tickets, SLA, CSAT, conversations, SMS/call logs</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Zendesk</span>
+                        <span class="pill">Intercom</span>
+                        <span class="pill">Twilio</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Scheduling and bookings</h3>
+                        <div class="integration-sub">Bookings, conversion, cancellations</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Calendly</span>
+                        <span class="pill">Acuity Scheduling</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>HR and payroll</h3>
+                        <div class="integration-sub">Payroll, employees, labor cost, HRIS basics</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Gusto</span>
+                        <span class="pill">ADP</span>
+                        <span class="pill">BambooHR</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Project and ops</h3>
+                        <div class="integration-sub">Boards, tasks, throughput, operational status</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Monday.com</span>
+                        <span class="pill">Asana</span>
+                    </div>
+                </article>
+
+                <article class="integration-card">
+                    <div class="integration-card-head">
+                        <h3>Storage and internal</h3>
+                        <div class="integration-sub">Spreadsheets and lightweight internal databases</div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="pill">Google Sheets</span>
+                        <span class="pill">Airtable</span>
+                    </div>
+                </article>
+
+                <article class="integration-card integration-callout">
+                    <div class="integration-card-head">
+                        <h3>Not limited to this list</h3>
+                        <div class="integration-sub">
+                            If it has an API, export, database, or even regular CSV reports, we can usually bring it in.
+                        </div>
+                    </div>
+                    <ul class="integration-bullets">
+                        <li>Custom APIs and internal systems</li>
+                        <li>CSV/SFTP, webhooks, and database connections</li>
+                        <li>“Glue” options like Zapier/Make when needed</li>
+                    </ul>
+                    <a class="btn tiny" href="#contact">Ask about your stack</a>
+                </article>
+            </div>
+        </div>
+        <!-- /COMMON INTEGRATIONS -->
     </section>
 
 </main>
 
 <footer>
-    <p>© 2026 Hollcroft Analytics · Tulsa, Oklahoma · Data Analytics & Business Intelligence</p>
+    <p>© 2026 Hollcroft Analytics 918.955.4931 · Tulsa, Oklahoma · Data Analytics & Business Intelligence</p>
 </footer>
 
-<!-- JS for mobile navbar toggle -->
+<!-- JS for mobile navbar toggle + integrations expand -->
 <script>
     const navToggle = document.querySelector('.nav-toggle');
     const navLinks = document.querySelector('.nav-links');
@@ -116,6 +280,27 @@
     navToggle.addEventListener('click', () => {
         navLinks.classList.toggle('active');
     });
+
+    // Integrations collapse/expand (keeps the page from feeling too long)
+    const integrationsToggle = document.querySelector('.integrations-toggle');
+    const integrationsGrid = document.querySelector('.integrations-grid');
+
+    if (integrationsToggle && integrationsGrid) {
+        const setCollapsed = (collapsed) => {
+            integrationsGrid.classList.toggle('collapsed', collapsed);
+            integrationsToggle.setAttribute('aria-expanded', String(!collapsed));
+            integrationsToggle.textContent = collapsed ? 'Show more' : 'Show less';
+        };
+
+        // Default to collapsed on smaller screens
+        const isSmall = window.matchMedia('(max-width: 768px)').matches;
+        setCollapsed(isSmall);
+
+        integrationsToggle.addEventListener('click', () => {
+            const currentlyCollapsed = integrationsGrid.classList.contains('collapsed');
+            setCollapsed(!currentlyCollapsed);
+        });
+    }
 </script>
 
 </body>
