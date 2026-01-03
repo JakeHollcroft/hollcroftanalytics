@@ -263,38 +263,59 @@ body {
     line-height: 1.65;
 }
 
-/* INTEGRATIONS */
+/* style.css */
+
+/* INTEGRATIONS (updated to feel closer to HERO) */
 .integrations {
     margin-top: 34px;
-    padding-top: 28px;
-    border-top: 1px solid var(--border);
+    padding: 28px 18px;
+    border-top: 1px solid rgba(226, 232, 240, 0.18);
+
+    /* hero-like background */
+    background: linear-gradient(135deg, var(--navy-950), var(--navy-800));
+    color: white;
+
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
 }
 
-.integrations-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin: 0 auto 18px;
-    max-width: 1060px;
+/* subtle glow like the hero */
+.integrations::after {
+    content: "";
+    position: absolute;
+    inset: -140px -140px auto auto;
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.18), rgba(42, 167, 224, 0.0) 60%);
+    pointer-events: none;
+}
+
+/* spacing + keep content above glow */
+.integrations-head,
+.integrations-grid {
+    position: relative;
+    z-index: 1;
 }
 
 .integrations-title h2 {
     margin: 0 0 8px;
     text-align: left;
     max-width: none;
+    color: white;
 }
 
 .integrations-title p {
-    color: var(--muted);
+    color: rgba(226, 232, 240, 0.88);
     line-height: 1.65;
     max-width: 820px;
 }
 
+/* button fits the darker section */
 .integrations-toggle {
-    border: 1px solid var(--border);
-    background: #fbfdff;
-    color: var(--ink);
+    border: 1px solid rgba(226, 232, 240, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: white;
     padding: 10px 14px;
     border-radius: 12px;
     cursor: pointer;
@@ -303,70 +324,81 @@ body {
 }
 
 .integrations-toggle:hover {
-    background: rgba(15, 23, 42, 0.04);
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(226, 232, 240, 0.45);
 }
 
-.integrations-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-    gap: 16px;
-}
-
-/* Collapsed state (used on small screens by JS) */
-.integrations-grid.collapsed article:nth-child(n+5) {
-    display: none;
-}
-
+/* cards: glassy on dark background */
 .integration-card {
-    border: 1px solid var(--border);
+    border: 1px solid rgba(226, 232, 240, 0.16);
     border-radius: 14px;
-    background: #fbfdff;
+    background: rgba(255, 255, 255, 0.05);
     padding: 16px;
+    backdrop-filter: blur(6px);
 }
 
 .integration-card-head h3 {
     font-size: 1.05rem;
     margin-bottom: 4px;
+    color: white;
 }
 
 .integration-sub {
-    color: var(--muted);
+    color: rgba(226, 232, 240, 0.82);
     font-size: 0.92rem;
     line-height: 1.4;
 }
 
-.pill-row {
-    margin-top: 12px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
+/* pills: readable on dark */
 .pill {
     display: inline-flex;
     align-items: center;
     padding: 7px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(226, 232, 240, 1);
-    background: rgba(15, 23, 42, 0.02);
+    border: 1px solid rgba(226, 232, 240, 0.22);
+    background: rgba(255, 255, 255, 0.06);
     font-size: 0.92rem;
-    color: var(--ink);
+    color: rgba(255, 255, 255, 0.92);
 }
 
 .pill:hover {
-    border-color: rgba(42, 167, 224, 0.35);
-    background: rgba(42, 167, 224, 0.06);
+    border-color: rgba(42, 167, 224, 0.45);
+    background: rgba(42, 167, 224, 0.12);
 }
 
+/* callout: slightly brighter gradient */
 .integration-callout {
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(42, 167, 224, 0.08));
-    border-color: rgba(42, 167, 224, 0.20);
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(42, 167, 224, 0.14));
+    border-color: rgba(42, 167, 224, 0.25);
 }
 
 .integration-bullets {
     margin: 12px 0 14px 18px;
-    color: var(--muted);
+    color: rgba(226, 232, 240, 0.88);
     line-height: 1.6;
+}
+
+/* tiny button inside callout looks good on dark */
+.btn.tiny {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(226, 232, 240, 0.22);
+    color: rgba(255, 255, 255, 0.95);
+    display: inline-block;
+    text-decoration: none;
+}
+
+.btn.tiny:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(226, 232, 240, 0.40);
+}
+
+@media (min-width: 900px) {
+    .integrations {
+        padding: 34px 26px;
+    }
 }
 
 /* FOOTER */
