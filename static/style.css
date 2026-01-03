@@ -1258,3 +1258,24 @@ footer {
     .map-embed { height: 200px; }
 }
 
+.contact-success {
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    background: rgba(20, 184, 166, 0.10);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-top: 14px;
+}
+
+.contact-success-title {
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.contact-success-sub {
+    margin-top: 3px;
+    color: rgba(226, 232, 240, 0.78);
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+

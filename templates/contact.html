@@ -59,7 +59,21 @@
                 <p>Send a message and I’ll get back to you quickly.</p>
             </div>
 
-            <form class="contact-form" method="post" action="">
+            {% if success %}
+              <div class="contact-success">
+                  <div class="contact-success-title">Message sent</div>
+                  <div class="contact-success-sub">Thanks — I’ll reach out soon.</div>
+              </div>
+            {% endif %}
+
+            {% if error %}
+              <div class="contact-error">
+                  <div class="contact-error-title">Something’s missing</div>
+                  <div class="contact-error-sub">{{ error }}</div>
+              </div>
+            {% endif %}
+
+            <form class="contact-form" method="post" action="{{ url_for('contact') }}">
                 <div class="form-grid">
                     <div class="form-field">
                         <label for="name">Name</label>
@@ -150,20 +164,19 @@
             </section>
 
             <section class="contact-card contact-card-tight">
-    <h3>Map</h3>
-    <p class="contact-muted">Service area: Tulsa Metro and remote engagements.</p>
+                <h3>Map</h3>
+                <p class="contact-muted">Service area: Tulsa Metro and remote engagements.</p>
 
-    <div class="map-shell" aria-label="Map">
-        <iframe
-            class="map-embed"
-            title="Hollcroft Analytics service area map"
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-            src="https://www.google.com/maps?q=Tulsa,+OK&z=11&output=embed">
-        </iframe>
-    </div>
-</section>
-
+                <div class="map-shell" aria-label="Map">
+                    <iframe
+                        class="map-embed"
+                        title="Hollcroft Analytics service area map"
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade"
+                        src="https://www.google.com/maps?q=Tulsa,+OK&z=11&output=embed">
+                    </iframe>
+                </div>
+            </section>
         </aside>
 
     </section>

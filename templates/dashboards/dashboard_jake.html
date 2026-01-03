@@ -59,6 +59,38 @@
                 {% endfor %}
             </tbody>
         </table>
+        <h3 style="margin-top: 28px;">Contact Submissions</h3>
+
+<table>
+    <caption>Latest Leads</caption>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Created (UTC)</th>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Systems</th>
+            <th>Message</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in contact_submissions %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.created_at }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.company }}</td>
+            <td>{{ c.email }}</td>
+            <td>{{ c.phone }}</td>
+            <td>{{ c.systems }}</td>
+            <td style="max-width: 420px; white-space: pre-wrap;">{{ c.message }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
     </div>
 </body>
 <footer>

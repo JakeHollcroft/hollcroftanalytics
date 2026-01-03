@@ -9,6 +9,8 @@ import duckdb
 import os
 import threading
 import time
+from datetime import datetime, timezone
+
 
 from clients.jc_mechanical.ingest import run_ingestion
 from clients.jc_mechanical.config import DB_FILE
@@ -68,6 +70,22 @@ def init_db():
             dashboard_key TEXT
         )
         """)
+
+        con.execute("""
+        CREATE TABLE IF NOT EXISTS contact_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            name TEXT NOT NULL,
+            company TEXT,
+            email TEXT NOT NULL,
+            phone TEXT,
+            systems TEXT,
+            message TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT
+        )
+        """)
+
 
 init_db()
 
@@ -269,23 +287,61 @@ def dashboard():
     
     # For "jake" dashboard, fetch all users
     all_users = []
+    contact_submissions = []
     if current_user.dashboard_key == "jake":
         with get_db() as con:
             all_users = con.execute("SELECT id, username, dashboard_key FROM users").fetchall()
+            contact_submissions = con.execute("""
+                SELECT id, created_at, name, company, email, phone, systems, message
+                FROM contact_submissions
+                ORDER BY id DESC
+                LIMIT 100
+            """).fetchall()
 
     try:
         return render_template(
             template_name,
             user=current_user,
             all_users=all_users,
+            contact_submissions=contact_submissions,
             **data
         )
     except TemplateNotFound:
         return f"No dashboard template found for {current_user.dashboard_key}.", 404
 
-@app.route("/contact", methods=["GET"])
+@app.route("/contact", methods=["GET", "POST"])
 def contact():
-    return render_template("contact.html")
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        company = request.form.get("company", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        systems = request.form.get("systems", "").strip()
+        message = request.form.get("message", "").strip()
+
+        if not name or not email or not message:
+            return render_template(
+                "contact.html",
+                success=False,
+                error="Please fill out Name, Email, and Message."
+            )
+
+        created_at = datetime.now(timezone.utc).isoformat()
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        user_agent = request.headers.get("User-Agent", "")
+
+        with get_db() as con:
+            con.execute("""
+                INSERT INTO contact_submissions
+                (created_at, name, company, email, phone, systems, message, ip, user_agent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (created_at, name, company, email, phone, systems, message, ip, user_agent))
+
+        return redirect(url_for("contact", sent="1"))
+
+    success = (request.args.get("sent") == "1")
+    return render_template("contact.html", success=success)
+
 
 @app.route("/logout")
 @login_required
