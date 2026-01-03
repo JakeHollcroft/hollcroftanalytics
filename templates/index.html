@@ -24,12 +24,6 @@
 <!-- NAVBAR -->
 <header class="navbar">
     <div class="brand">
-        <img
-            src="{{ url_for('static', filename='hollcroft_analytics.png') }}"
-            alt="Hollcroft Analytics logo"
-            class="brand-logo"
-            decoding="async"
-        />
         <div class="brand-text">
             <div class="brand-name">Hollcroft Analytics</div>
             <div class="brand-sub">Tulsa, Oklahoma</div>
@@ -45,19 +39,19 @@
 </header>
 
 <!-- OPTIONAL: smaller centered logo under navbar (remove this block if you only want it in navbar) -->
-<img
-    src="{{ url_for('static', filename='hollcroft_analytics.png') }}"
-    alt="Hollcroft Analytics logo — Tulsa, Oklahoma data analytics and business intelligence"
-    class="dashboard-logo"
-    loading="lazy"
-    decoding="async"
-/>
+
+
 
 <main id="home">
 
     <!-- HERO SECTION -->
     <section class="hero">
         <h1>Data Analytics & KPI Dashboards for Tulsa Businesses</h1>
+            <img
+        src="{{ url_for('static', filename='hollcroft_analytics.png') }}"
+        alt="Hollcroft Analytics logo"
+        class="hero-logo"
+    />
         <p>
             Hollcroft Analytics helps small and medium-sized businesses in Tulsa, Oklahoma
             turn raw data into actionable insights through automated ETL pipelines,
