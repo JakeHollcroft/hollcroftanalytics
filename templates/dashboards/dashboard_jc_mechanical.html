@@ -3,261 +3,95 @@
 <head>
     <meta charset="UTF-8">
 
-    <!-- SEO: Strong, local, keyword-focused title -->
-    <title>Client Dashboard | Hollcroft Analytics | Data Analytics & Business Intelligence in Tulsa, OK</title>
+    <title>Client Dashboard | Hollcroft Analytics | Tulsa, OK</title>
 
-    <!-- SEO: Helpful meta description (keep ~150-160 chars) -->
-    <meta name="description" content="Secure client dashboard by Hollcroft Analytics in Tulsa, OK. Data analytics, dashboards, reporting, and business intelligence to help you make better decisions.">
+    <meta name="description"
+          content="Secure client dashboard by Hollcroft Analytics in Tulsa, OK. Dashboards, reporting, and business intelligence.">
 
-    <!-- SEO: Canonical (update to your real public URL if/when this page is publicly accessible) -->
-    <link rel="canonical" href="https://www.hollcroftanalytics.com/dashboard">
-
-    <!-- SEO: Social sharing -->
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Client Dashboard | Hollcroft Analytics | Tulsa, OK">
-    <meta property="og:description" content="Secure client dashboard by Hollcroft Analytics in Tulsa, OK. Dashboards, reporting, and business intelligence.">
-    <meta property="og:image" content="{{ url_for('static', filename='logo.png', _external=True) }}">
-    <meta property="og:url" content="https://www.hollcroftanalytics.com/dashboard">
-    <meta name="twitter:card" content="summary_large_image">
-
-    <!-- SEO: Robots (dashboards are usually private; noindex prevents indexing & data leakage) -->
     <meta name="robots" content="noindex, nofollow">
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- SEO: LocalBusiness JSON-LD (safe even with noindex; helps on public pages too) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "Hollcroft Analytics",
-      "image": "{{ url_for('static', filename='logo.png', _external=True) }}",
-      "url": "https://www.hollcroftanalytics.com",
-      "telephone": "",
-      "address": {
-        "@type": "PostalAddress",
-        "addressLocality": "Tulsa",
-        "addressRegion": "OK",
-        "addressCountry": "US"
-      },
-      "areaServed": "Tulsa, OK",
-      "knowsAbout": [
-        "Data Analytics",
-        "Business Intelligence",
-        "Dashboard Development",
-        "Reporting",
-        "Data Engineering"
-      ]
-    }
-    </script>
+    <!-- Main site styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f4f4f9;
-        }
-
-        header {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        /* SEO/Accessibility: One clear H1 that matches brand + location */
-        h1 {
-            margin: 0;
-            font-size: 1.8rem;
-        }
-
-        .logout-btn {
-            padding: 6px 12px;
-            background-color: #d9534f;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-        .logout-btn:hover { background-color: #c9302c; }
-
-        .dashboard-logo {
-            max-width: 220px;
-            width: 100%;
-            height: auto;
-        }
-
-        .kpi-wrap {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 18px;
-        }
-
-        .kpi-card {
-            background: #ffffff;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            padding: 18px;
-            width: 100%;
-            max-width: 520px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        }
-
-        .ftc-percentage {
-            font-size: 36px;
-            font-weight: 800;
-            line-height: 1.1;
-            margin-top: 6px;
-        }
-
-        .ftc-sub {
-            font-size: 13px;
-            color: #666;
-            margin-top: 4px;
-        }
-
-        .progress { height: 18px; }
-
-        .mini-metrics {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 10px;
-            margin-top: 14px;
-        }
-
-        .mini-metric {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 10px;
-            text-align: center;
-        }
-
-        .mini-metric .label {
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .mini-metric .value {
-            font-size: 18px;
-            font-weight: 700;
-            margin-top: 2px;
-            color: #0f172a;
-        }
-
-        .section-card {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            padding: 16px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-            max-width: 980px;
-            margin: 0 auto 18px;
-        }
-
-        .section-title {
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        .table td, .table th {
-            vertical-align: middle;
-            font-size: 0.9rem;
-        }
-
-        footer {
-            text-align: center;
-            margin-top: 18px;
-            color: #6b7280;
-        }
-
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-
-        @media (max-width: 480px) {
-            h1 { font-size: 1.5rem; }
-            .mini-metrics { grid-template-columns: 1fr; }
-        }
-    </style>
+    <!-- Social preview -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Client Dashboard | Hollcroft Analytics">
+    <meta property="og:description" content="Secure client dashboard by Hollcroft Analytics">
+    <meta property="og:image" content="{{ url_for('static', filename='logo.png', _external=True) }}">
 </head>
-<body>
 
-<header>
-    <!-- SEO: Brand + Service + Location in H1 -->
-    <div>
-        <h1>Hollcroft Analytics Client Dashboard (Tulsa, OK)</h1>
-        <!-- SEO: Short supporting copy that can help relevance without keyword stuffing -->
-        <p class="text-muted mb-0" style="font-size:13px;">
-            Data analytics, reporting, and business intelligence dashboards for Tulsa-area teams.
-        </p>
+<body class="jc-dash">
+
+<!-- NAVBAR -->
+<header class="navbar">
+    <div class="brand">
+        <div class="brand-text">
+            <div class="brand-name">Hollcroft Analytics</div>
+            <div class="brand-sub">Tulsa, Oklahoma</div>
+        </div>
     </div>
 
-    <a href="{{ url_for('logout') }}" class="logout-btn" aria-label="Log out of the Hollcroft Analytics client dashboard">Logout</a>
+    <nav class="nav-links">
+        <a href="{{ url_for('home') }}">Home</a>
+        <a href="{{ url_for('contact') }}">Contact</a>
+        <a href="{{ url_for('logout') }}" class="nav-login">Logout</a>
+    </nav>
+
+    <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
 </header>
 
+<!-- LOGO -->
 <div class="text-center mb-4">
-    <!-- SEO/Accessibility: descriptive alt text -->
-    <img src="{{ url_for('static', filename='logo.png') }}"
-         alt="Hollcroft Analytics logo — Tulsa, Oklahoma data analytics and business intelligence"
-         class="dashboard-logo"
-         loading="lazy"
-         decoding="async">
+    <img
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt="Hollcroft Analytics logo — Tulsa, Oklahoma data analytics"
+        class="dashboard-logo"
+        loading="lazy">
 </div>
 
-<!-- SEO/Accessibility: main landmark -->
-<main id="main-content" role="main" aria-label="Client dashboard content">
+<main id="main-content" role="main">
 
-{# ----------------------------
-   FTC Progress Bar Color
-   ---------------------------- #}
 {% set ftc_bar_class =
     'bg-success' if first_time_completion_pct >= first_time_completion_target
     else 'bg-warning' if first_time_completion_pct >= 75
     else 'bg-danger'
 %}
 
+<!-- KPI CARD -->
 <div class="kpi-wrap">
     <section class="kpi-card" aria-labelledby="kpi-ftc-title">
+
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <div class="text-muted" style="font-size:13px;">Quality KPI</div>
+                <div class="text-muted jc-kpi-kicker">Quality KPI</div>
 
-                <!-- SEO/Accessibility: use an H2 for section structure -->
-                <h2 id="kpi-ftc-title" style="font-size:18px; font-weight:700; margin:0;">
+                <h2 id="kpi-ftc-title" class="jc-kpi-title">
                     First-Time Completion
                 </h2>
 
-                <div class="ftc-percentage" aria-label="First-time completion percentage">
+                <div class="ftc-percentage">
                     {{ first_time_completion_pct }}%
                 </div>
 
                 <div class="ftc-sub">
-                    Target: {{ first_time_completion_target }}% • Completed jobs counted: {{ completed_jobs }}
+                    Target: {{ first_time_completion_target }}%
+                    • Completed jobs counted: {{ completed_jobs }}
                 </div>
             </div>
 
             <div class="text-end">
-                <div class="text-muted" style="font-size:12px;">Last refreshed</div>
-                <div style="font-size:13px; font-weight:700;">{{ last_refresh }}</div>
+                <div class="text-muted jc-refresh-label">Last refreshed</div>
+                <div class="jc-refresh-value">{{ last_refresh }}</div>
             </div>
         </div>
 
         <div class="mt-3">
-            <div class="progress" aria-label="First-time completion progress bar">
+            <div class="progress">
                 <div
                     id="ftc-progress-bar"
                     class="progress-bar {{ ftc_bar_class }} progress-bar-striped"
@@ -271,13 +105,13 @@
             </div>
         </div>
 
-        <div class="mini-metrics" aria-label="First-time completion supporting metrics">
+        <div class="mini-metrics">
             <div class="mini-metric">
                 <div class="label">First-time (1 appt)</div>
                 <div class="value">{{ first_time_completed }}</div>
             </div>
             <div class="mini-metric">
-                <div class="label">Repeat visit (2+ appts)</div>
+                <div class="label">Repeat visit (2+)</div>
                 <div class="value">{{ repeat_visit_completed }}</div>
             </div>
             <div class="mini-metric">
@@ -285,17 +119,24 @@
                 <div class="value">{{ repeat_visit_pct }}%</div>
             </div>
         </div>
+
     </section>
 </div>
 
+<!-- REPEAT JOBS TABLE -->
 <section class="section-card" aria-labelledby="repeat-jobs-title">
-    <h2 id="repeat-jobs-title" class="section-title">Repeat-Visit Completed Jobs (2+ appointments)</h2>
-    <p class="text-muted" style="font-size:13px; margin-bottom:10px;">
-        These jobs required at least one return trip. Reviewing these is the fastest way to push First-Time Completion up.
+
+    <h2 id="repeat-jobs-title" class="section-title">
+        Repeat-Visit Completed Jobs (2+ appointments)
+    </h2>
+
+    <p class="text-muted jc-section-note">
+        These jobs required at least one return trip. Reviewing these is the fastest way
+        to improve First-Time Completion.
     </p>
 
     <div class="table-responsive">
-        <table class="table table-sm table-striped align-middle" aria-label="Repeat-visit completed jobs table">
+        <table class="table table-sm table-striped align-middle">
             <thead>
                 <tr>
                     <th scope="col">Completed</th>
@@ -311,42 +152,58 @@
                         <tr>
                             <td>{{ r.completed_at_central }}</td>
                             <td>{{ r.customer_name }}</td>
-                            <td><span class="badge text-bg-secondary">{{ r.num_appointments }}</span></td>
+                            <td>
+                                <span class="badge text-bg-secondary">
+                                    {{ r.num_appointments }}
+                                </span>
+                            </td>
                             <td>{{ r.work_status }}</td>
-                            <td style="max-width: 320px; white-space: normal;">{{ r.description }}</td>
+                            <td class="jc-desc-cell">{{ r.description }}</td>
                         </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="5" class="text-muted">No repeat-visit completed jobs found.</td>
+                        <td colspan="5" class="text-muted">
+                            No repeat-visit completed jobs found.
+                        </td>
                     </tr>
                 {% endif %}
             </tbody>
         </table>
     </div>
+
 </section>
 
-<div class="text-center mb-3">
+<div class="text-center mb-3 jc-last-refresh">
     <p class="text-muted">Last refreshed: {{ last_refresh }}</p>
 </div>
 
 </main>
 
 <footer>
-    <!-- SEO: consistent NAP-ish text (Name + location). Keep it clean (no stuffing). -->
     <p>© 2026 Hollcroft Analytics · Tulsa, Oklahoma · Data Analytics & Business Intelligence</p>
 </footer>
 
+<!-- Scripts -->
 <script>
-    // Set progress bar width safely (handles decimals)
     const ftcBar = document.getElementById("ftc-progress-bar");
     if (ftcBar) {
         const pct = parseFloat(ftcBar.dataset.ftc || "0");
-        const clamped = Math.max(0, Math.min(100, pct));
-        ftcBar.style.width = clamped + "%";
+        ftcBar.style.width = Math.max(0, Math.min(100, pct)) + "%";
     }
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    const navToggle = document.querySelector('.nav-toggle');
+    const navLinks = document.querySelector('.nav-links');
+    if (navToggle && navLinks) {
+        navToggle.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+    }
+</script>
+
 </body>
 </html>

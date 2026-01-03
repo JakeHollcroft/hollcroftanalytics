@@ -1349,3 +1349,194 @@ footer {
         white-space: nowrap;
     }
 }
+
+/* =========================
+   JC MECHANICAL DASHBOARD
+   (scoped with .jc-dash)
+========================= */
+
+/* page spacing + background harmony with your dark theme */
+.jc-dash {
+    background: var(--bg);
+    color: var(--ink);
+}
+
+/* logo spacing */
+.jc-dash .dashboard-logo {
+    max-width: 220px;
+    width: 100%;
+    height: auto;
+}
+
+/* KPI wrapper */
+.jc-dash .kpi-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0 18px;
+    padding: 0 16px;
+}
+
+/* KPI card = dark glass card */
+.jc-dash .kpi-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+/* tiny header text above KPI title */
+.jc-dash .jc-kpi-kicker {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+/* KPI title */
+.jc-dash .jc-kpi-title {
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin: 0;
+    color: var(--ink);
+}
+
+/* big percentage */
+.jc-dash .ftc-percentage {
+    font-size: 2.25rem;
+    font-weight: 900;
+    line-height: 1.05;
+    margin-top: 8px;
+    letter-spacing: 0.3px;
+    color: var(--ink);
+}
+
+.jc-dash .ftc-sub {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+/* refresh label/value */
+.jc-dash .jc-refresh-label {
+    font-size: 0.78rem;
+    color: var(--muted-2);
+}
+
+.jc-dash .jc-refresh-value {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--ink);
+}
+
+/* bootstrap progress: keep it clean on dark */
+.jc-dash .progress {
+    height: 18px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+/* mini-metrics grid */
+.jc-dash .mini-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.jc-dash .mini-metric {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px;
+    text-align: center;
+}
+
+.jc-dash .mini-metric .label {
+    font-size: 0.78rem;
+    color: var(--muted-2);
+}
+
+.jc-dash .mini-metric .value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    margin-top: 4px;
+    color: var(--ink);
+}
+
+/* section cards */
+.jc-dash .section-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+    max-width: 1100px;
+    margin: 0 auto 18px;
+}
+
+.jc-dash .section-title {
+    font-size: 1.05rem;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: var(--ink);
+}
+
+.jc-dash .jc-section-note {
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    color: var(--muted);
+}
+
+/* BOOTSTRAP TABLE OVERRIDES (make headers readable on dark) */
+.jc-dash .table {
+    color: var(--ink);
+    margin-bottom: 0;
+}
+
+.jc-dash .table thead th {
+    background: linear-gradient(
+        135deg,
+        rgba(20, 184, 166, 0.18),
+        rgba(42, 167, 224, 0.14)
+    ) !important;
+    color: rgba(255, 255, 255, 0.96) !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-weight: 800;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.jc-dash .table td,
+.jc-dash .table th {
+    border-color: var(--border) !important;
+    vertical-align: middle;
+    font-size: 0.92rem;
+}
+
+/* striped rows: subtle on dark */
+.jc-dash .table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: rgba(255, 255, 255, 0.03);
+    color: var(--ink);
+}
+
+/* description cell wrap */
+.jc-dash .jc-desc-cell {
+    max-width: 340px;
+    white-space: normal;
+    line-height: 1.5;
+}
+
+/* “last refreshed” footer area */
+.jc-dash .jc-last-refresh {
+    padding: 0 16px;
+}
+
+/* mobile */
+@media (max-width: 480px) {
+    .jc-dash .mini-metrics {
+        grid-template-columns: 1fr;
+    }
+}
