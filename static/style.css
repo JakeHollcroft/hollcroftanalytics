@@ -1279,3 +1279,73 @@ footer {
     font-size: 0.95rem;
 }
 
+/* DASHBOARD TABLES (dark theme) */
+.dashboard-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+/* table header */
+.dashboard-container thead th {
+    background: linear-gradient(
+        135deg,
+        rgba(20, 184, 166, 0.18),
+        rgba(42, 167, 224, 0.14)
+    );
+    color: rgba(255, 255, 255, 0.96);
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+/* table cells */
+.dashboard-container td {
+    padding: 10px;
+    color: var(--ink);
+    font-size: 0.92rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+/* subtle row hover */
+.dashboard-container tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* zebra striping */
+.dashboard-container tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* captions */
+.dashboard-container caption {
+    caption-side: top;
+    text-align: left;
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: var(--ink);
+    margin-bottom: 8px;
+}
+
+/* constrain long message column */
+.dashboard-container td:last-child {
+    max-width: 420px;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+/* responsive: allow horizontal scroll */
+@media (max-width: 900px) {
+    .dashboard-container table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
