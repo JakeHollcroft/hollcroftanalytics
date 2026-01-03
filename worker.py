@@ -1,3 +1,4 @@
+# worker.py
 import time
 import duckdb
 from clients.jc_mechanical.ingest import run_ingestion
@@ -27,7 +28,6 @@ def scheduler_loop(interval_seconds=3600):
     time.sleep(10)
 
     while True:
-        start = time.time()
         try:
             print("[WORKER] Starting ingestion...")
             run_ingestion()
@@ -35,9 +35,8 @@ def scheduler_loop(interval_seconds=3600):
         except Exception as e:
             print(f"[WORKER] Ingestion error: {e}")
 
-        elapsed = time.time() - start
-        sleep_for = max(0, interval_seconds - elapsed)
-        print(f"[WORKER] Sleeping {interval_seconds:.0f}s until next run")
+        # ALWAYS wait a full interval after completion
+        print(f"[WORKER] Sleeping {interval_seconds}s until next run...")
         time.sleep(interval_seconds)
 
 if __name__ == "__main__":
