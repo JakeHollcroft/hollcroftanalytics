@@ -2,7 +2,7 @@ import duckdb
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from zoneinfo import 
+from zoneinfo import ZoneInfo
 import os
 
 
