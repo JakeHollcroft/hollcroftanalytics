@@ -76,33 +76,26 @@ def _set_metadata(conn, key: str, value: str):
     """, [key, value])
 
 def _try_acquire_ingest_lock(conn) -> bool:
-    """
-    Cross-process lock using metadata table.
-    - If lock missing => acquire
-    - If lock exists but older than TTL => steal
-    """
     now = time.time()
     raw = _get_metadata(conn, LOCK_KEY)
 
     if raw:
+        parts = str(raw).split("|")
         try:
-            lock_ts = float(raw)
+            lock_ts = float(parts[0])
         except Exception:
             lock_ts = 0.0
 
         age = now - lock_ts
         if age < LOCK_TTL_SECONDS:
-            print(f"[{_ts()}] Lock exists (age {age:.0f}s). Another ingest is running. Skipping.")
+            print(f"[{_ts()}] Lock exists (age {age:.0f}s). Raw lock='{raw}'. Skipping.")
             return False
 
-        print(f"[{_ts()}] Lock is stale (age {age:.0f}s). Stealing lock...")
+        print(f"[{_ts()}] Lock stale (age {age:.0f}s). Raw lock='{raw}'. Stealing...")
 
-    _set_metadata(conn, LOCK_KEY, str(now))
+    lock_val = f"{now}|{RUN_ID}|pid={os.getpid()}"
+    _set_metadata(conn, LOCK_KEY, lock_val)
     return True
-
-def _release_ingest_lock(conn):
-    _ensure_metadata_table(conn)
-    conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
 
 
 def _ts():
