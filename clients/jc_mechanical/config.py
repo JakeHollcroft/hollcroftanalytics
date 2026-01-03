@@ -6,5 +6,5 @@ PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
-# API key
-API_KEY = "2be8ce9fff09493b87c800ceecebe3b1"
+# Never hardcode keys in code
+API_KEY = os.environ.get("HOUSECALLPRO_API_KEY", "").strip()

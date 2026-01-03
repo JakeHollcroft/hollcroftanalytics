@@ -3,9 +3,10 @@
 import os
 import time
 import random
+import uuid
 import duckdb
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from requests.exceptions import (
     HTTPError,
@@ -14,13 +15,12 @@ from requests.exceptions import (
     ChunkedEncodingError,
     RequestException,
 )
-import uuid
+
 from .config import DB_FILE, API_KEY
 
-LOCK_KEY = "ingest_lock"
-LOCK_TTL_SECONDS = 60 * 60 * 6  
-
-RUN_ID = uuid.uuid4().hex[:8]
+# -----------------------------
+# Constants / config
+# -----------------------------
 
 BASE_URL_JOBS = "https://api.housecallpro.com/jobs"
 BASE_URL_JOB_DETAIL = "https://api.housecallpro.com/jobs/{id}"
@@ -36,7 +36,7 @@ HEADERS = {
 
 COMPLETED_STATUSES = {"complete unrated", "complete rated"}
 
-# ---- Retry / throttling controls (tune later) ----
+# ---- Retry / throttling controls ----
 DETAIL_MAX_RETRIES = 6
 DETAIL_BASE_BACKOFF_SEC = 0.8
 DETAIL_JITTER_SEC = 0.35
@@ -51,66 +51,139 @@ REQUEST_TIMEOUT = (10, 45)
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
-# Simple in-process guard to prevent overlapping runs
-_INGEST_RUNNING = False
+# Unique-ish id so you can see which process/run produced logs
+RUN_ID = uuid.uuid4().hex[:8]
 
-def _ensure_metadata_table(conn):
-    conn.execute("""
+# -----------------------------
+# DB-backed cross-process lock
+# -----------------------------
+
+LOCK_KEY = "ingest_lock"
+LOCK_TTL_SECONDS = 60 * 60 * 6  # 6 hours
+
+
+def _ts() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _ensure_metadata_table(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS metadata (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+        """
+    )
 
-def _get_metadata(conn, key: str):
+
+def _get_metadata(conn: duckdb.DuckDBPyConnection, key: str):
     _ensure_metadata_table(conn)
     row = conn.execute("SELECT value FROM metadata WHERE key = ?", [key]).fetchone()
     return row[0] if row else None
 
-def _set_metadata(conn, key: str, value: str):
+
+def _set_metadata(conn: duckdb.DuckDBPyConnection, key: str, value: str) -> None:
     _ensure_metadata_table(conn)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO metadata (key, value)
         VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    """, [key, value])
+        """,
+        [key, value],
+    )
 
-def _try_acquire_ingest_lock(conn) -> bool:
+
+def _try_acquire_ingest_lock(conn: duckdb.DuckDBPyConnection) -> bool:
+    """
+    Cross-process lock using metadata table.
+    - If lock missing => acquire
+    - If lock exists but older than TTL => steal
+    """
     now = time.time()
     raw = _get_metadata(conn, LOCK_KEY)
 
     if raw:
-        parts = str(raw).split("|")
         try:
-            lock_ts = float(parts[0])
+            lock_ts = float(raw)
         except Exception:
             lock_ts = 0.0
 
         age = now - lock_ts
         if age < LOCK_TTL_SECONDS:
-            print(f"[{_ts()}] Lock exists (age {age:.0f}s). Raw lock='{raw}'. Skipping.")
+            print(
+                f"[{_ts()}] RUN {RUN_ID} Lock exists (age {age:.0f}s). Raw lock='{raw}'. Skipping."
+            )
             return False
 
-        print(f"[{_ts()}] Lock stale (age {age:.0f}s). Raw lock='{raw}'. Stealing...")
+        print(
+            f"[{_ts()}] RUN {RUN_ID} Lock is stale (age {age:.0f}s). Stealing lock..."
+        )
 
-    lock_val = f"{now}|{RUN_ID}|pid={os.getpid()}"
-    _set_metadata(conn, LOCK_KEY, lock_val)
+    _set_metadata(conn, LOCK_KEY, str(now))
     return True
 
 
-def _ts():
-    # tiny helper for consistent logs
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+def _release_ingest_lock(conn: duckdb.DuckDBPyConnection) -> None:
+    _ensure_metadata_table(conn)
+    conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
 
 
-def _sleep_with_log(seconds: float, reason: str):
+def update_last_refresh(conn: duckdb.DuckDBPyConnection) -> None:
     """
-    Centralized backoff sleep with a couple print statements so you can see
-    when you're backing off for rate limits / server errors / network issues.
+    Store last_refresh as ISO UTC timestamp in metadata.
     """
+    _set_metadata(conn, "last_refresh", datetime.now(timezone.utc).isoformat())
+
+
+def _ingest_due(conn: duckdb.DuckDBPyConnection, min_interval_seconds: int) -> bool:
+    """
+    Prevents re-running ingestion immediately after it completes.
+    Uses metadata.last_refresh to decide if another run is due.
+    """
+    raw = _get_metadata(conn, "last_refresh")
+    if not raw:
+        return True
+
+    try:
+        last = datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+
+    age = (datetime.now(timezone.utc) - last).total_seconds()
+    return age >= float(min_interval_seconds)
+
+
+def clear_ingest_lock() -> bool:
+    """
+    Utility: remove the ingest lock manually if you need to.
+    Returns True if it deleted a lock row, False if no lock existed.
+    """
+    conn = duckdb.connect(DB_FILE)
+    try:
+        _ensure_metadata_table(conn)
+        exists = conn.execute(
+            "SELECT 1 FROM metadata WHERE key = ?",
+            [LOCK_KEY],
+        ).fetchone()
+        if not exists:
+            return False
+        conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
+        return True
+    finally:
+        conn.close()
+
+
+# -----------------------------
+# Networking helpers
+# -----------------------------
+
+
+def _sleep_with_log(seconds: float, reason: str) -> None:
     seconds = max(0.0, float(seconds))
-    print(f"[{_ts()}] BACKOFF: {reason}")
-    print(f"[{_ts()}] Sleeping {seconds:.2f}s...")
+    print(f"[{_ts()}] RUN {RUN_ID} BACKOFF: {reason}")
+    print(f"[{_ts()}] RUN {RUN_ID} Sleeping {seconds:.2f}s...")
     time.sleep(seconds)
 
 
@@ -126,7 +199,9 @@ def fetch_all(endpoint, key_name, page_size=100):
         items = data.get(key_name, [])
         all_items.extend(items)
 
-        print(f"Fetched page {page} of {data.get('total_pages', 1)} ({len(items)} items)")
+        print(
+            f"[{_ts()}] RUN {RUN_ID} Fetched page {page} of {data.get('total_pages', 1)} ({len(items)} items)"
+        )
 
         if page >= data.get("total_pages", 1):
             break
@@ -152,11 +227,10 @@ def fetch_job_details(job_id):
     last_err = None
 
     for attempt in range(1, DETAIL_MAX_RETRIES + 1):
-        # Always throttle a bit between calls; log it occasionally for visibility
         if DETAIL_MIN_DELAY_EACH_CALL_SEC > 0:
             if attempt == 1:
                 print(
-                    f"[{_ts()}] Throttle: sleeping {DETAIL_MIN_DELAY_EACH_CALL_SEC:.2f}s "
+                    f"[{_ts()}] RUN {RUN_ID} Throttle: sleeping {DETAIL_MIN_DELAY_EACH_CALL_SEC:.2f}s "
                     f"before detail call for job {job_id}"
                 )
             time.sleep(DETAIL_MIN_DELAY_EACH_CALL_SEC)
@@ -165,25 +239,30 @@ def fetch_job_details(job_id):
             resp = SESSION.get(url, params=expand_params_primary, timeout=REQUEST_TIMEOUT)
 
             if resp.status_code == 400:
-                # Some endpoints accept expand=... instead of expand[]=...
-                resp = SESSION.get(url, params=expand_params_fallback, timeout=REQUEST_TIMEOUT)
+                resp = SESSION.get(
+                    url, params=expand_params_fallback, timeout=REQUEST_TIMEOUT
+                )
 
-            # ---- 429 rate limit handling ----
             if resp.status_code == 429:
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
                     wait = float(retry_after)
-                    reason = f"429 rate limit for job {job_id} (Retry-After={retry_after}) (attempt {attempt}/{DETAIL_MAX_RETRIES})"
+                    reason = (
+                        f"429 rate limit for job {job_id} (Retry-After={retry_after}) "
+                        f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
+                    )
                 else:
                     wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                         0, DETAIL_JITTER_SEC
                     )
-                    reason = f"429 rate limit for job {job_id} (no Retry-After) (attempt {attempt}/{DETAIL_MAX_RETRIES})"
+                    reason = (
+                        f"429 rate limit for job {job_id} (no Retry-After) "
+                        f"(attempt {attempt}/{DETAIL_MAX_RETRIES})"
+                    )
 
                 _sleep_with_log(wait, reason)
                 continue
 
-            # ---- transient server errors ----
             if resp.status_code in (500, 502, 503, 504):
                 wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                     0, DETAIL_JITTER_SEC
@@ -213,11 +292,8 @@ def fetch_job_details(job_id):
         except HTTPError as e:
             last_err = e
             status = getattr(e.response, "status_code", None)
-
-            # Do not retry on typical terminal errors
             if status in (400, 401, 403, 404):
                 raise
-
             wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(
                 0, DETAIL_JITTER_SEC
             )
@@ -240,7 +316,14 @@ def fetch_job_details(job_id):
             _sleep_with_log(wait, reason)
             continue
 
-    raise last_err if last_err else RuntimeError(f"Failed to fetch job details for {job_id}")
+    raise last_err if last_err else RuntimeError(
+        f"Failed to fetch job details for {job_id}"
+    )
+
+
+# -----------------------------
+# Flatteners
+# -----------------------------
 
 
 def appointment_count_from_job(job_obj):
@@ -272,9 +355,10 @@ def flatten_jobs(jobs):
                 "created_at": job.get("created_at"),
                 "updated_at": job.get("updated_at"),
                 "completed_at": (job.get("work_timestamps") or {}).get("completed_at"),
-                "customer_id": (job.get("customer") or {}).get("id") if job.get("customer") else None,
-                # filled after detail fetch
-                "num_appointments": 0,
+                "customer_id": (job.get("customer") or {}).get("id")
+                if job.get("customer")
+                else None,
+                "num_appointments": 0,  # filled after details
             }
         )
     return pd.DataFrame(rows)
@@ -330,44 +414,45 @@ def flatten_invoices(invoices):
     return pd.DataFrame(rows)
 
 
-def update_last_refresh(conn):
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS metadata (
-            key TEXT PRIMARY KEY,
-            value TEXT
+# -----------------------------
+# Main ingestion
+# -----------------------------
+
+
+def run_ingestion(min_interval_seconds: int = 3600):
+    """
+    One ingestion run.
+    - DB-backed cross-process lock prevents overlap across threads/processes
+    - "due" check prevents immediate re-runs right after completion
+    - staging+swap prevents the web app from seeing missing tables mid-run
+    """
+    if not API_KEY:
+        raise RuntimeError(
+            "HOUSECALLPRO_API_KEY is not set. Add it to your Render env vars."
         )
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO metadata (key, value)
-        VALUES ('last_refresh', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        [datetime.utcnow().isoformat()],
-    )
 
-
-def run_ingestion():
-    """
-    One ingestion run. Protected by a DB-backed lock so only one process runs it.
-    """
     conn = duckdb.connect(DB_FILE)
 
-    # Acquire cross-process lock
+    # Acquire lock
     if not _try_acquire_ingest_lock(conn):
         conn.close()
         return
 
     try:
-        print(f"[{_ts()}] Ingest lock acquired. Starting ingestion...")
-        print(f"[{_ts()}] RUN {RUN_ID} lock acquired")
-        print("Fetching Jobs...")
+        # Due check (prevents re-run immediately after completion / restarts)
+        if not _ingest_due(conn, min_interval_seconds):
+            print(f"[{_ts()}] RUN {RUN_ID} Not due yet. Skipping ingestion.")
+            return
+
+        print(f"[{_ts()}] RUN {RUN_ID} Ingest lock acquired. Starting ingestion...")
+
+        print(f"[{_ts()}] RUN {RUN_ID} Fetching Jobs...")
         jobs_data = fetch_all(BASE_URL_JOBS, key_name="jobs", page_size=100)
         df_jobs = flatten_jobs(jobs_data)
 
-        print("Fetching appointment counts for completed jobs (job detail endpoint)...")
+        print(
+            f"[{_ts()}] RUN {RUN_ID} Fetching appointment counts for completed jobs (job detail endpoint)..."
+        )
         appt_counts = {}
         completed_ids = (
             df_jobs[df_jobs["work_status"].isin(COMPLETED_STATUSES)]["job_id"]
@@ -379,34 +464,43 @@ def run_ingestion():
             try:
                 detail = fetch_job_details(job_id)
                 appt_counts[job_id] = appointment_count_from_job(detail)
-                print(f"[{_ts()}] RUN {RUN_ID} Fetched details for job {job_id} ({i}/{len(completed_ids)})")
+                if i % 10 == 0 or i == 1:
+                    print(
+                        f"[{_ts()}] RUN {RUN_ID} Detail progress: {i}/{len(completed_ids)}"
+                    )
             except HTTPError as e:
-                print(f"Warning: HTTP error for {job_id}: {e}")
+                print(f"[{_ts()}] RUN {RUN_ID} Warning: HTTP error for {job_id}: {e}")
                 appt_counts[job_id] = 0
             except Exception as e:
-                print(f"Warning: unexpected error for {job_id}: {e}")
+                print(
+                    f"[{_ts()}] RUN {RUN_ID} Warning: unexpected error for {job_id}: {e}"
+                )
                 appt_counts[job_id] = 0
 
             if i % DETAIL_BATCH_PAUSE_EVERY == 0:
-                print(f"[{_ts()}] Batch throttle: processed {i}; sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s")
+                print(
+                    f"[{_ts()}] RUN {RUN_ID} Batch throttle: processed {i}; sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s"
+                )
                 time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
-        df_jobs["num_appointments"] = df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
+        df_jobs["num_appointments"] = (
+            df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
+        )
 
-        print("Fetching Customers...")
+        print(f"[{_ts()}] RUN {RUN_ID} Fetching Customers...")
         customers_data = fetch_all(BASE_URL_CUSTOMERS, key_name="customers", page_size=100)
         df_customers = flatten_customers(customers_data)
 
-        print("Fetching Invoices...")
+        print(f"[{_ts()}] RUN {RUN_ID} Fetching Invoices...")
         invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
         df_invoices = flatten_invoices(invoices_data)
 
-        # IMPORTANT: don't drop tables mid-run if the web app is reading.
-        # Safer: write staging then swap.
+        # Staging tables first
         conn.execute("CREATE OR REPLACE TABLE jobs_stage AS SELECT * FROM df_jobs")
         conn.execute("CREATE OR REPLACE TABLE customers_stage AS SELECT * FROM df_customers")
         conn.execute("CREATE OR REPLACE TABLE invoices_stage AS SELECT * FROM df_invoices")
 
+        # Swap in a way that minimizes missing-table windows
         conn.execute("DROP TABLE IF EXISTS jobs")
         conn.execute("ALTER TABLE jobs_stage RENAME TO jobs")
 
@@ -418,43 +512,37 @@ def run_ingestion():
 
         update_last_refresh(conn)
 
-        print(f"[{_ts()}] Ingestion complete. Data saved to {DB_FILE}")
+        print(f"[{_ts()}] RUN {RUN_ID} Ingestion complete. Data saved to {DB_FILE}")
 
     finally:
         try:
             _release_ingest_lock(conn)
-            print(f"[{_ts()}] Ingest lock released.")
+            print(f"[{_ts()}] RUN {RUN_ID} Ingest lock released.")
         finally:
             conn.close()
 
 
-
 def run_ingestion_forever(interval_seconds=3600):
     """
-    Runs ingestion in a loop every interval_seconds (default 1 hour).
-    IMPORTANT: Use this in a separate worker process/service,
-    not inside the Flask web server process.
+    Optional: loop runner. If you use this, keep it in ONE process only.
     """
-    print(f"Starting ingestion loop: every {interval_seconds} seconds.")
+    print(f"[{_ts()}] RUN {RUN_ID} Starting ingestion loop: every {interval_seconds} seconds.")
     while True:
         start = time.time()
         try:
-            run_ingestion()
+            run_ingestion(min_interval_seconds=interval_seconds)
         except Exception as e:
-            print(f"Periodic ingestion error: {e}")
+            print(f"[{_ts()}] RUN {RUN_ID} Periodic ingestion error: {e}")
 
         elapsed = time.time() - start
         sleep_for = max(0, interval_seconds - elapsed)
-        print(f"Next run in {sleep_for:.0f}s.")
+        print(f"[{_ts()}] RUN {RUN_ID} Next loop wake in {sleep_for:.0f}s.")
         time.sleep(sleep_for)
 
 
 if __name__ == "__main__":
-    # If you run this file directly, you can choose:
-    # - one-shot: python -m clients.jc_mechanical.ingest
-    # - loop hourly: INGEST_LOOP=1 python -m clients.jc_mechanical.ingest
     loop = os.environ.get("INGEST_LOOP", "").strip() == "1"
     if loop:
         run_ingestion_forever(interval_seconds=3600)
     else:
-        run_ingestion()
+        run_ingestion(min_interval_seconds=3600)

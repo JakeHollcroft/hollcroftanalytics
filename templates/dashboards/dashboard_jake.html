@@ -15,18 +15,11 @@
     </div>
 
     <nav class="nav-links">
-        <a href="#home">Home</a>
+        <a href="{{ url_for('home') }}">Home</a>
         <a href="{{ url_for('contact') }}">Contact</a>
         <a href="{{ url_for('login') }}" class="nav-login">Client Login</a>
     </nav>
-    <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
-</header>
-        <div class="logo">Hollcroft Analytics</div>
-        <nav>
-            <a href="{{ url_for('home') }}">Home</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-        </nav>
-    </header>
+
 
     <div class="dashboard-container">
         <h2>Welcome, {{ user.username }}!</h2>

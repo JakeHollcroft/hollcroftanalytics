@@ -5,11 +5,9 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import os
 
+from .config import DB_FILE
 
-PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", Path(__file__).resolve().parents[2]))
-PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
-DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 def get_dashboard_kpis():
     conn = duckdb.connect(DB_FILE)

@@ -1,36 +1,58 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, Response
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+# app.py
+
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    login_user,
+    login_required,
+    logout_user,
+    current_user,
+)
 from werkzeug.security import generate_password_hash, check_password_hash
 from jinja2 import TemplateNotFound
 import sqlite3
 from pathlib import Path
-import subprocess
-import duckdb
 import os
 import threading
 import time
 from datetime import datetime, timezone
 
+# JC Mechanical ingestion + DB path
+from clients.jc_mechanical.ingest import run_ingestion
 
 
+# ----------------------
+# PATHS / PERSISTENCE
+# ----------------------
 
 BASE_DIR = Path(__file__).parent
 
+# On Render, set PERSIST_DIR to your disk mount path (example: /var/data)
 PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", BASE_DIR))
 PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
+# SQLite app DB (users, contact submissions)
 DB_PATH = PERSIST_DIR / "app.db"
 
+# Dashboards folder
+TEMPLATES_DIR = BASE_DIR / "templates" / "dashboards"
+
+
+# ----------------------
+# FLASK APP
+# ----------------------
 
 app = Flask(__name__)
-app.secret_key = "change-this-secret"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-secret")
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
+
 # ----------------------
-# DATABASE
+# SQLITE HELPERS
 # ----------------------
 
 def get_db():
@@ -38,39 +60,46 @@ def get_db():
     con.row_factory = sqlite3.Row  # allows access by column name
     return con
 
+
 def init_db():
     with get_db() as con:
-        con.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            dashboard_key TEXT
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                dashboard_key TEXT
+            )
+            """
         )
-        """)
 
-        con.execute("""
-        CREATE TABLE IF NOT EXISTS contact_submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            name TEXT NOT NULL,
-            company TEXT,
-            email TEXT NOT NULL,
-            phone TEXT,
-            systems TEXT,
-            message TEXT NOT NULL,
-            ip TEXT,
-            user_agent TEXT
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contact_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                name TEXT NOT NULL,
+                company TEXT,
+                email TEXT NOT NULL,
+                phone TEXT,
+                systems TEXT,
+                message TEXT NOT NULL,
+                ip TEXT,
+                user_agent TEXT
+            )
+            """
         )
-        """)
 
 
 init_db()
 
-TEMPLATES_DIR = BASE_DIR / "templates" / "dashboards"
 
+# ----------------------
+# DASHBOARD TEMPLATE CREATION
+# ----------------------
 
-def create_dashboard_template(username):
+def create_dashboard_template(username: str):
     dashboard_path = TEMPLATES_DIR / f"dashboard_{username}.html"
 
     # Do nothing if it already exists
@@ -113,7 +142,7 @@ def load_user(user_id):
             FROM users
             WHERE id = ?
             """,
-            (user_id,)
+            (user_id,),
         ).fetchone()
 
         if row:
@@ -127,24 +156,73 @@ def load_user(user_id):
 
 
 # ----------------------
+# BACKGROUND SCHEDULER (WEB SERVICE)
+# ----------------------
+#
+# This runs ingestion on an interval inside the web service.
+# IMPORTANT:
+# - Only do this if you have ONE web instance.
+# - If you ever scale web instances > 1, disable this (ENABLE_INGEST_SCHEDULER=0)
+#   and use a single worker instead.
+
+_scheduler_started = False
+
+
+def scheduler_loop(interval_seconds: int = 3600):
+    # optional: delay so deploy finishes and server is fully up
+    time.sleep(10)
+
+    while True:
+        try:
+            print("[SCHEDULER] Starting ingestion...")
+            # run_ingestion should enforce lock + min interval internally
+            run_ingestion(min_interval_seconds=interval_seconds)
+            print("[SCHEDULER] Ingestion cycle done.")
+        except Exception as e:
+            print(f"[SCHEDULER] Ingestion error: {e}")
+
+        print(f"[SCHEDULER] Sleeping {interval_seconds}s until next run...")
+        time.sleep(interval_seconds)
+
+
+def start_scheduler():
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    _scheduler_started = True
+
+    t = threading.Thread(target=scheduler_loop, args=(3600,), daemon=True)
+    t.start()
+    print("[SCHEDULER] Background scheduler started.")
+
+
+# Start scheduler at import time if enabled
+# Render env var suggestion:
+# ENABLE_INGEST_SCHEDULER=1
+# PERSIST_DIR=/var/data
+if os.environ.get("ENABLE_INGEST_SCHEDULER", "1").strip() == "1":
+    start_scheduler()
+
+
+def start_ingestion_background(force: bool = False):
+    """
+    Fire-and-forget ingestion from a button.
+    force=False -> respects min_interval_seconds (1 hour)
+    force=True  -> bypasses min interval (still lock-protected)
+    """
+    interval = 0 if force else 3600
+    t = threading.Thread(target=run_ingestion, kwargs={"min_interval_seconds": interval}, daemon=True)
+    t.start()
+
+
+# ----------------------
 # ROUTES
 # ----------------------
-
-
-@app.route("/dashboard/jc_mechanical/refresh", methods=["POST"])
-@login_required
-def refresh_jc_mechanical():
-    if current_user.dashboard_key != "jc_mechanical":
-        return redirect(url_for("dashboard"))
-
-    # Worker-only ingestion now
-    return redirect(url_for("dashboard"))
-
-
 
 @app.route("/")
 def home():
     return render_template("index.html")
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -193,7 +271,7 @@ def login():
         with get_db() as con:
             row = con.execute(
                 "SELECT id, username, password_hash, dashboard_key FROM users WHERE username = ?",
-                (username,)
+                (username,),
             ).fetchone()
 
         if row:
@@ -209,31 +287,30 @@ def login():
     return render_template("login.html")
 
 
-
 @app.route("/dashboard")
 @login_required
 def dashboard():
     template_name = f"dashboards/dashboard_{current_user.dashboard_key}.html"
 
-    # Dynamically import KPI functions only for dashboards that need them
     data = {}
 
     if current_user.dashboard_key == "jc_mechanical":
         from clients.jc_mechanical.kpis import get_dashboard_kpis
         data = get_dashboard_kpis()
-    
-    # For "jake" dashboard, fetch all users
+
     all_users = []
     contact_submissions = []
     if current_user.dashboard_key == "jake":
         with get_db() as con:
             all_users = con.execute("SELECT id, username, dashboard_key FROM users").fetchall()
-            contact_submissions = con.execute("""
+            contact_submissions = con.execute(
+                """
                 SELECT id, created_at, name, company, email, phone, systems, message
                 FROM contact_submissions
                 ORDER BY id DESC
                 LIMIT 100
-            """).fetchall()
+                """
+            ).fetchall()
 
     try:
         return render_template(
@@ -241,10 +318,24 @@ def dashboard():
             user=current_user,
             all_users=all_users,
             contact_submissions=contact_submissions,
-            **data
+            **data,
         )
     except TemplateNotFound:
         return f"No dashboard template found for {current_user.dashboard_key}.", 404
+
+
+@app.route("/dashboard/jc_mechanical/refresh", methods=["POST"])
+@login_required
+def refresh_jc_mechanical():
+    if current_user.dashboard_key != "jc_mechanical":
+        return redirect(url_for("dashboard"))
+
+    # Start ingestion in the background (lock-protected in ingest.py)
+    start_ingestion_background(force=False)
+
+    flash("Data refresh started.")
+    return redirect(url_for("dashboard"))
+
 
 @app.route("/contact", methods=["GET", "POST"])
 def contact():
@@ -260,7 +351,7 @@ def contact():
             return render_template(
                 "contact.html",
                 success=False,
-                error="Please fill out Name, Email, and Message."
+                error="Please fill out Name, Email, and Message.",
             )
 
         created_at = datetime.now(timezone.utc).isoformat()
@@ -268,15 +359,18 @@ def contact():
         user_agent = request.headers.get("User-Agent", "")
 
         with get_db() as con:
-            con.execute("""
+            con.execute(
+                """
                 INSERT INTO contact_submissions
                 (created_at, name, company, email, phone, systems, message, ip, user_agent)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (created_at, name, company, email, phone, systems, message, ip, user_agent))
+                """,
+                (created_at, name, company, email, phone, systems, message, ip, user_agent),
+            )
 
         return redirect(url_for("contact", sent="1"))
 
-    success = (request.args.get("sent") == "1")
+    success = request.args.get("sent") == "1"
     return render_template("contact.html", success=success)
 
 
@@ -287,10 +381,8 @@ def logout():
     flash("You have been logged out.")
     return redirect(url_for("home"))
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
-
 
 if __name__ == "__main__":
+    # Render provides PORT
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
