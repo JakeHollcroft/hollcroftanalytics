@@ -1,0 +1,184 @@
+<!-- contact.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Contact | Hollcroft Analytics</title>
+
+    <meta name="description" content="Contact Hollcroft Analytics in Tulsa, Oklahoma for data analytics, KPI dashboards, ETL pipelines, and API integrations for small and medium businesses." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<!-- NAVBAR (matches index) -->
+<header class="navbar">
+    <div class="brand">
+        <div class="brand-text">
+            <div class="brand-name">Hollcroft Analytics</div>
+            <div class="brand-sub">Tulsa, Oklahoma</div>
+        </div>
+    </div>
+
+    <nav class="nav-links">
+        <a href="{{ url_for('home') }}">Home</a>
+        <a href="{{ url_for('contact') }}">Contact</a>
+        <a href="{{ url_for('login') }}" class="nav-login">Client Login</a>
+    </nav>
+
+    <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
+</header>
+
+<main class="contact-page">
+
+    <!-- CONTACT HERO -->
+    <section class="contact-hero">
+        <div class="contact-hero-inner">
+            <h1>Let’s talk about your data</h1>
+            <p>
+                Tell me what systems you use, what you want to measure, and what “good reporting” would look like.
+                I’ll respond with next steps and a simple plan.
+            </p>
+            <div class="contact-hero-badges">
+                <span class="pill">KPI Dashboards</span>
+                <span class="pill">API Integrations</span>
+                <span class="pill">ETL Pipelines</span>
+                <span class="pill">Data Modeling</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- CONTACT BODY -->
+    <section class="contact-wrap">
+
+        <!-- LEFT: FORM -->
+        <section class="contact-card">
+            <div class="contact-card-head">
+                <h2>Request information</h2>
+                <p>Send a message and I’ll get back to you quickly.</p>
+            </div>
+
+            <form class="contact-form" method="post" action="">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="name">Name</label>
+                        <input id="name" name="name" type="text" placeholder="Your name" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="company">Company</label>
+                        <input id="company" name="company" type="text" placeholder="Company name">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="email">Email</label>
+                        <input id="email" name="email" type="email" placeholder="you@company.com" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="phone">Phone</label>
+                        <input id="phone" name="phone" type="tel" placeholder="(918) 555-1234">
+                    </div>
+
+                    <div class="form-field form-wide">
+                        <label for="systems">What tools do you use today?</label>
+                        <input id="systems" name="systems" type="text" placeholder="Example: Housecall Pro, QuickBooks, Stripe, Google Sheets">
+                    </div>
+
+                    <div class="form-field form-wide">
+                        <label for="message">What are you trying to improve?</label>
+                        <textarea id="message" name="message" rows="6" placeholder="Example: I want weekly KPI reporting, pipeline visibility, and a dashboard for revenue + labor cost." required></textarea>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn primary contact-submit">Send message</button>
+
+                <p class="contact-note">
+                    By sending this form you agree to be contacted about your request. No spam.
+                </p>
+            </form>
+        </section>
+
+        <!-- RIGHT: INFO / CALLOUTS -->
+        <aside class="contact-side">
+            <section class="contact-card contact-card-tight">
+                <h3>Contact</h3>
+                <div class="contact-list">
+                    <div class="contact-row">
+                        <div class="contact-k">Phone</div>
+                        <div class="contact-v"><a href="tel:19189554931">(918) 955-4931</a></div>
+                    </div>
+                    <div class="contact-row">
+                        <div class="contact-k">Email</div>
+                        <div class="contact-v"><a href="mailto:info@hollcroftanalytics.com">info@hollcroftanalytics.com</a></div>
+                    </div>
+                    <div class="contact-row">
+                        <div class="contact-k">Location</div>
+                        <div class="contact-v">Tulsa, Oklahoma</div>
+                    </div>
+                </div>
+
+                <div class="contact-divider"></div>
+
+                <h3>What you’ll get</h3>
+                <ul class="contact-bullets">
+                    <li>Quick discovery on your goals and data sources</li>
+                    <li>Recommended approach (dashboards, ETL, automations)</li>
+                    <li>Clear next steps and timeline options</li>
+                </ul>
+
+                <a class="btn tiny contact-mini-cta" href="{{ url_for('login') }}">Already a client? Login</a>
+            </section>
+
+            <section class="contact-card contact-card-tight contact-highlight">
+                <h3>Common projects</h3>
+                <div class="project-list">
+                    <div class="project-item">
+                        <div class="project-title">Executive KPI dashboard</div>
+                        <div class="project-sub">Revenue, cash, jobs, labor, marketing ROI</div>
+                    </div>
+                    <div class="project-item">
+                        <div class="project-title">API ingestion + warehouse</div>
+                        <div class="project-sub">Unify tools into one source of truth</div>
+                    </div>
+                    <div class="project-item">
+                        <div class="project-title">Weekly reporting automation</div>
+                        <div class="project-sub">Email/slack-ready updates with clean metrics</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="contact-card contact-card-tight">
+                <h3>Map</h3>
+                <p class="contact-muted">Service area: Tulsa Metro and remote engagements.</p>
+                <div class="map-shell" aria-label="Map">
+                    <!-- Optional: replace with an embed later. Leaving as a styled placeholder keeps it clean. -->
+                    <div class="map-placeholder">
+                        Tulsa, OK
+                        <span>On-site or remote</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+    </section>
+</main>
+
+<footer>
+    <p>© 2026 Hollcroft Analytics · Tulsa, Oklahoma · Data Analytics & Business Intelligence</p>
+</footer>
+
+<script>
+    const navToggle = document.querySelector('.nav-toggle');
+    const navLinks = document.querySelector('.nav-links');
+
+    if (navToggle && navLinks) {
+        navToggle.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+    }
+</script>
+
+</body>
+</html>

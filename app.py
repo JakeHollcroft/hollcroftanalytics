@@ -283,7 +283,9 @@ def dashboard():
     except TemplateNotFound:
         return f"No dashboard template found for {current_user.dashboard_key}.", 404
 
-
+@app.route("/contact", methods=["GET"])
+def contact():
+    return render_template("contact.html")
 
 @app.route("/logout")
 @login_required
