@@ -832,44 +832,52 @@ footer {
 .client-top {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
+    gap: 14px;
+    margin-bottom: 12px;
 }
 
+/* BIGGER LOGO (wide "logo plate" for readability) */
 .client-logo {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
+    width: 140px;
+    height: 72px;
+    border-radius: 16px;
     border: 1px solid rgba(226, 232, 240, 0.14);
     background: rgba(255, 255, 255, 0.06);
     display: grid;
     place-items: center;
     overflow: hidden;
+    flex: 0 0 auto;
 }
 
 .client-logo img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    padding: 8px;
+    padding: 10px 12px;
 }
 
 .client-logo-text {
-    font-size: 0.72rem;
-    letter-spacing: 0.5px;
-    color: rgba(226, 232, 240, 0.75);
+    font-size: 0.8rem;
+    letter-spacing: 0.6px;
+    color: rgba(226, 232, 240, 0.78);
+}
+
+/* text block next to logo */
+.client-meta {
+    min-width: 0;
 }
 
 .client-name {
     font-weight: 800;
     color: var(--ink);
     letter-spacing: 0.2px;
+    line-height: 1.15;
 }
 
 .client-industry {
     font-size: 0.92rem;
     color: var(--muted-2);
-    margin-top: 2px;
+    margin-top: 3px;
 }
 
 .client-body {
@@ -901,8 +909,13 @@ footer {
 
 @media (max-width: 768px) {
     .client-card { padding: 14px; }
+    .client-logo { width: 120px; height: 64px; }
 }
 
+@media (max-width: 480px) {
+    .client-top { flex-direction: column; align-items: flex-start; }
+    .client-logo { width: 100%; height: 70px; }
+}
 
 /* responsive */
 @media (max-width: 900px) {
@@ -931,7 +944,8 @@ footer {
     padding: 22px 16px;
     font-size: 0.92rem;
     color: var(--muted-2);
-    background: #f1f5f9;
+    background: rgba(255, 255, 255, 0.03);
+    border-top: 1px solid var(--border);
     margin-top: 26px;
 }
 
