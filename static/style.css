@@ -1,13 +1,18 @@
 /* style.css */
 :root {
-    /* Hollcroft Analytics-inspired palette (navy + teal/blue + green) */
     --navy-950: #0b1f35;
     --navy-900: #0f172a;
     --navy-800: #1e293b;
 
-    --ink: #0f172a;
-    --muted: #475569;
-    --muted-2: #64748b;
+    
+    --bg: #070d17;              
+    --surface: #0b1626;         
+    --surface-2: #0f1f33;       
+    --border: rgba(226, 232, 240, 0.12);
+
+    --ink: rgba(255, 255, 255, 0.92);
+    --muted: rgba(226, 232, 240, 0.72);
+    --muted-2: rgba(226, 232, 240, 0.58);
 
     --teal-500: #14b8a6;
     --teal-600: #0d9488;
@@ -17,11 +22,8 @@
 
     --green-600: #2e7d32;
     --green-700: #256628;
-
-    --surface: #ffffff;
-    --bg: #f7f9fc;
-    --border: #e2e8f0;
 }
+
 
 * {
     box-sizing: border-box;
@@ -644,6 +646,142 @@ body {
     font-size: 0.92rem;
     background: rgba(15, 23, 42, 0.02);
 }
+
+/* GLOBAL DARK BASE */
+body {
+    background-color: var(--bg);
+    color: var(--ink);
+}
+
+/* links (optional) */
+a { color: inherit; }
+
+/* FEATURES container becomes dark */
+.features {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.features h2 {
+    color: var(--ink);
+}
+
+.feature {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+}
+
+.feature h3 { color: var(--ink); }
+.feature p { color: var(--muted); }
+
+/* Make the “tiny” button dark-friendly everywhere */
+.btn.tiny {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    color: var(--ink);
+}
+
+.btn.tiny:hover {
+    background: rgba(255, 255, 255, 0.10);
+}
+
+/* SAMPLE DASHBOARD SECTION: dark shell + cards */
+.sample-dash-head h2 { color: var(--ink); }
+.sample-dash-head p { color: var(--muted); }
+
+.dash-shell {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.dash-topbar {
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(
+        135deg,
+        rgba(20, 184, 166, 0.08),
+        rgba(42, 167, 224, 0.06)
+    );
+}
+
+.dash-name { color: var(--ink); }
+.dash-sub { color: var(--muted); }
+
+/* filter chips */
+.chip {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.90);
+}
+
+/* KPI cards */
+.kpi {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+}
+
+.kpi-label { color: var(--muted); }
+.kpi-value { color: var(--ink); }
+.kpi-meta { color: var(--muted); }
+
+/* dashboard cards */
+.dash-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+}
+
+.dash-card-title { color: var(--ink); }
+.dash-card-sub { color: var(--muted); }
+
+.spark {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.spark-axis { color: var(--muted-2); }
+
+.mini-row { color: var(--muted); }
+
+.mini-track {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.mini-row em { color: rgba(255, 255, 255, 0.90); }
+
+.t-row {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.90);
+}
+
+.t-row.t-head {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.t-row span:nth-child(2),
+.t-row span:nth-child(3) {
+    color: var(--muted-2);
+}
+
+.dash-note {
+    border-top: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+}
+
+footer {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted-2);
+    border-top: 1px solid var(--border);
+}
+
+.hero-logo,
+.brand-logo {
+    background: rgba(255, 255, 255, 0.78);
+}
+
 
 /* responsive */
 @media (max-width: 900px) {
