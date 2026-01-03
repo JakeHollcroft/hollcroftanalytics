@@ -32,7 +32,7 @@
 
     <nav class="nav-links">
         <a href="#home">Home</a>
-        <a href="#contact">Contact</a>
+        <a href="{{ url_for('contact') }}">Contact</a>
         <a href="{{ url_for('login') }}" class="nav-login">Client Login</a>
     </nav>
     <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
@@ -54,7 +54,7 @@
             API integrations, and executive-ready KPI dashboards.
         </p>
         <div class="hero-buttons">
-            <a class="btn primary" href="#contact">Request Information</a>
+            <a class="btn primary" href="{{ url_for('contact') }}">Request Information</a>
             <a class="btn secondary" href="{{ url_for('login') }}">Client Login</a>
         </div>
     </section>
@@ -71,7 +71,7 @@
         </div>
 
         <div class="sample-dash-actions">
-            <a class="btn tiny" href="#contact">Request Information</a>
+            <a class="btn tiny" href="{{ url_for('contact') }}">Request Information</a>
         </div>
     </div>
 
@@ -491,7 +491,7 @@
                         <li>CSV/SFTP, webhooks, and database connections</li>
                         <li>“Glue” options like Zapier/Make when needed</li>
                     </ul>
-                    <a class="btn tiny" href="#contact">Ask about your stack</a>
+                    <a class="btn tiny" href="{{ url_for('login') }}">Ask about your stack</a>
                 </article>
             </div>
         </div>
