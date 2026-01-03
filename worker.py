@@ -37,8 +37,8 @@ def scheduler_loop(interval_seconds=3600):
 
         elapsed = time.time() - start
         sleep_for = max(0, interval_seconds - elapsed)
-        print(f"[WORKER] Next run in {sleep_for:.0f}s")
-        time.sleep(sleep_for)
+        print(f"[WORKER] Sleeping {interval_seconds:.0f}s until next run")
+        time.sleep(interval_seconds)
 
 if __name__ == "__main__":
     ensure_data()

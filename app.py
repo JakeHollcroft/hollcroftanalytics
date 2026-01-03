@@ -12,32 +12,6 @@ import time
 from datetime import datetime, timezone
 
 
-from clients.jc_mechanical.ingest import run_ingestion
-from clients.jc_mechanical.config import DB_FILE
-
-def start_ingestion_background():
-    thread = threading.Thread(target=run_ingestion, daemon=True)
-    thread.start()
-
-
-def ensure_data():
-    need_ingest = False
-    if not DB_FILE.exists():
-        print("DB file not found. Running ingestion...")
-        need_ingest = True
-    else:
-        # check if 'jobs' table exists
-        conn = duckdb.connect(DB_FILE)
-        try:
-            conn.execute("SELECT 1 FROM jobs LIMIT 1").fetchall()
-        except duckdb.CatalogException:
-            print("Jobs table missing. Running ingestion...")
-            need_ingest = True
-        finally:
-            conn.close()
-
-    if need_ingest:
-        run_ingestion()
 
 
 BASE_DIR = Path(__file__).parent
@@ -94,38 +68,6 @@ def init_db():
 init_db()
 
 TEMPLATES_DIR = BASE_DIR / "templates" / "dashboards"
-
-
-
-_scheduler_started = False
-
-def scheduler_loop(interval_seconds=3600):
-    # Optional: delay so app boots fully before first run
-    time.sleep(10)
-
-    while True:
-        start = time.time()
-        try:
-            print("[SCHEDULER] Starting ingestion...")
-            run_ingestion()
-            print("[SCHEDULER] Ingestion finished.")
-        except Exception as e:
-            print(f"[SCHEDULER] Ingestion error: {e}")
-
-        elapsed = time.time() - start
-        sleep_for = max(0, interval_seconds - elapsed)
-        print(f"[SCHEDULER] Next run in {sleep_for:.0f}s")
-        time.sleep(sleep_for)
-
-def start_scheduler():
-    global _scheduler_started
-    if _scheduler_started:
-        return
-
-    _scheduler_started = True
-    t = threading.Thread(target=scheduler_loop, args=(3600,), daemon=True)
-    t.start()
-    print("[SCHEDULER] Background scheduler started.")
 
 
 def create_dashboard_template(username):
@@ -193,20 +135,11 @@ def load_user(user_id):
 @login_required
 def refresh_jc_mechanical():
     if current_user.dashboard_key != "jc_mechanical":
-        flash("Unauthorized.")
         return redirect(url_for("dashboard"))
 
-    from clients.jc_mechanical.kpis import get_refresh_status
-
-    status = get_refresh_status()
-
-    if not status["can_refresh"]:
-        flash(f"You can refresh again at {status['next_refresh']}")
-        return redirect(url_for("dashboard"))
-
-    start_ingestion_background()
-    flash("Data refresh started.")
+    # Worker-only ingestion now
     return redirect(url_for("dashboard"))
+
 
 
 @app.route("/")

@@ -17,6 +17,9 @@ from requests.exceptions import (
 
 from .config import DB_FILE, API_KEY
 
+LOCK_KEY = "ingest_lock"
+LOCK_TTL_SECONDS = 60 * 60 * 6  
+
 BASE_URL_JOBS = "https://api.housecallpro.com/jobs"
 BASE_URL_JOB_DETAIL = "https://api.housecallpro.com/jobs/{id}"
 BASE_URL_CUSTOMERS = "https://api.housecallpro.com/customers"
@@ -48,6 +51,56 @@ SESSION.headers.update(HEADERS)
 
 # Simple in-process guard to prevent overlapping runs
 _INGEST_RUNNING = False
+
+def _ensure_metadata_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+def _get_metadata(conn, key: str):
+    _ensure_metadata_table(conn)
+    row = conn.execute("SELECT value FROM metadata WHERE key = ?", [key]).fetchone()
+    return row[0] if row else None
+
+def _set_metadata(conn, key: str, value: str):
+    _ensure_metadata_table(conn)
+    conn.execute("""
+        INSERT INTO metadata (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    """, [key, value])
+
+def _try_acquire_ingest_lock(conn) -> bool:
+    """
+    Cross-process lock using metadata table.
+    - If lock missing => acquire
+    - If lock exists but older than TTL => steal
+    """
+    now = time.time()
+    raw = _get_metadata(conn, LOCK_KEY)
+
+    if raw:
+        try:
+            lock_ts = float(raw)
+        except Exception:
+            lock_ts = 0.0
+
+        age = now - lock_ts
+        if age < LOCK_TTL_SECONDS:
+            print(f"[{_ts()}] Lock exists (age {age:.0f}s). Another ingest is running. Skipping.")
+            return False
+
+        print(f"[{_ts()}] Lock is stale (age {age:.0f}s). Stealing lock...")
+
+    _set_metadata(conn, LOCK_KEY, str(now))
+    return True
+
+def _release_ingest_lock(conn):
+    _ensure_metadata_table(conn)
+    conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
 
 
 def _ts():
@@ -303,15 +356,18 @@ def update_last_refresh(conn):
 
 def run_ingestion():
     """
-    One ingestion run (safe to call from your Flask app thread).
+    One ingestion run. Protected by a DB-backed lock so only one process runs it.
     """
-    global _INGEST_RUNNING
-    if _INGEST_RUNNING:
-        print("Ingestion already running, skipping this run.")
+    conn = duckdb.connect(DB_FILE)
+
+    # Acquire cross-process lock
+    if not _try_acquire_ingest_lock(conn):
+        conn.close()
         return
 
-    _INGEST_RUNNING = True
     try:
+        print(f"[{_ts()}] Ingest lock acquired. Starting ingestion...")
+
         print("Fetching Jobs...")
         jobs_data = fetch_all(BASE_URL_JOBS, key_name="jobs", page_size=100)
         df_jobs = flatten_jobs(jobs_data)
@@ -337,16 +393,10 @@ def run_ingestion():
                 appt_counts[job_id] = 0
 
             if i % DETAIL_BATCH_PAUSE_EVERY == 0:
-                # log batch throttling so it's visible in your console
-                print(
-                    f"[{_ts()}] Batch throttle: processed {i} detail calls; "
-                    f"sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s to ease rate limits"
-                )
+                print(f"[{_ts()}] Batch throttle: processed {i}; sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s")
                 time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
-        df_jobs["num_appointments"] = (
-            df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
-        )
+        df_jobs["num_appointments"] = df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
 
         print("Fetching Customers...")
         customers_data = fetch_all(BASE_URL_CUSTOMERS, key_name="customers", page_size=100)
@@ -356,24 +406,32 @@ def run_ingestion():
         invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
         df_invoices = flatten_invoices(invoices_data)
 
-        conn = duckdb.connect(DB_FILE)
+        # IMPORTANT: don't drop tables mid-run if the web app is reading.
+        # Safer: write staging then swap.
+        conn.execute("CREATE OR REPLACE TABLE jobs_stage AS SELECT * FROM df_jobs")
+        conn.execute("CREATE OR REPLACE TABLE customers_stage AS SELECT * FROM df_customers")
+        conn.execute("CREATE OR REPLACE TABLE invoices_stage AS SELECT * FROM df_invoices")
 
         conn.execute("DROP TABLE IF EXISTS jobs")
-        conn.execute("CREATE TABLE jobs AS SELECT * FROM df_jobs")
+        conn.execute("ALTER TABLE jobs_stage RENAME TO jobs")
 
         conn.execute("DROP TABLE IF EXISTS customers")
-        conn.execute("CREATE TABLE customers AS SELECT * FROM df_customers")
+        conn.execute("ALTER TABLE customers_stage RENAME TO customers")
 
         conn.execute("DROP TABLE IF EXISTS invoices")
-        conn.execute("CREATE TABLE invoices AS SELECT * FROM df_invoices")
+        conn.execute("ALTER TABLE invoices_stage RENAME TO invoices")
 
         update_last_refresh(conn)
-        conn.close()
 
-        print(f"Ingestion complete. Data saved to {DB_FILE}")
+        print(f"[{_ts()}] Ingestion complete. Data saved to {DB_FILE}")
 
     finally:
-        _INGEST_RUNNING = False
+        try:
+            _release_ingest_lock(conn)
+            print(f"[{_ts()}] Ingest lock released.")
+        finally:
+            conn.close()
+
 
 
 def run_ingestion_forever(interval_seconds=3600):
