@@ -42,7 +42,12 @@ def ensure_data():
 ensure_data()
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "app.db"
+
+PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", BASE_DIR))
+PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_PATH = PERSIST_DIR / "app.db"
+
 
 app = Flask(__name__)
 app.secret_key = "change-this-secret"
