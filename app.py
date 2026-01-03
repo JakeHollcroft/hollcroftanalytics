@@ -39,7 +39,6 @@ def ensure_data():
     if need_ingest:
         run_ingestion()
 
-ensure_data()
 
 BASE_DIR = Path(__file__).parent
 
@@ -358,7 +357,6 @@ def logout():
 # if __name__ == "__main__":
 #     app.run(debug=True)
 
-start_scheduler()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
