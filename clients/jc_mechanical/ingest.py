@@ -14,11 +14,13 @@ from requests.exceptions import (
     ChunkedEncodingError,
     RequestException,
 )
-
+import uuid
 from .config import DB_FILE, API_KEY
 
 LOCK_KEY = "ingest_lock"
 LOCK_TTL_SECONDS = 60 * 60 * 6  
+
+RUN_ID = uuid.uuid4().hex[:8]
 
 BASE_URL_JOBS = "https://api.housecallpro.com/jobs"
 BASE_URL_JOB_DETAIL = "https://api.housecallpro.com/jobs/{id}"
@@ -367,7 +369,7 @@ def run_ingestion():
 
     try:
         print(f"[{_ts()}] Ingest lock acquired. Starting ingestion...")
-
+        print(f"[{_ts()}] RUN {RUN_ID} lock acquired")
         print("Fetching Jobs...")
         jobs_data = fetch_all(BASE_URL_JOBS, key_name="jobs", page_size=100)
         df_jobs = flatten_jobs(jobs_data)
@@ -384,7 +386,7 @@ def run_ingestion():
             try:
                 detail = fetch_job_details(job_id)
                 appt_counts[job_id] = appointment_count_from_job(detail)
-                print(f"Fetched details for job {job_id} ({i}/{len(completed_ids)})")
+                print(f"[{_ts()}] RUN {RUN_ID} Fetched details for job {job_id} ({i}/{len(completed_ids)})")
             except HTTPError as e:
                 print(f"Warning: HTTP error for {job_id}: {e}")
                 appt_counts[job_id] = 0
