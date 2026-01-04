@@ -1578,3 +1578,35 @@ footer {
   opacity: 1 !important;
 }
 
+/* =========================
+   reCAPTCHA – dark theme fit
+========================= */
+
+.g-recaptcha {
+    margin-top: 10px;
+    margin-bottom: 6px;
+}
+
+.contact-form .g-recaptcha {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.contact-form .g-recaptcha > div {
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+}
+
+.contact-form .captcha-note {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+@media (max-width: 480px) {
+    .contact-form .g-recaptcha {
+        transform: scale(0.92);
+        transform-origin: left center;
+    }
+}
