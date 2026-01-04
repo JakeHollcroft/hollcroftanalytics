@@ -9,6 +9,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
@@ -103,6 +105,11 @@
                     <div class="form-field form-wide">
                         <label for="message">What are you trying to improve?</label>
                         <textarea id="message" name="message" rows="6" placeholder="Example: I want weekly KPI reporting, pipeline visibility, and a dashboard for revenue + labor cost." required></textarea>
+                    </div>
+
+                    <!-- reCAPTCHA widget - ADDED -->
+                    <div class="form-field form-wide">
+                        <div class="g-recaptcha" data-sitekey="{{ RECAPTCHA_SITE_KEY }}"></div>
                     </div>
                 </div>
 

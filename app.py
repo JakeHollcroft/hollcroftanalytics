@@ -16,6 +16,7 @@ from pathlib import Path
 import os
 import threading
 import time
+import requests
 from datetime import datetime, timezone
 
 # JC Mechanical ingestion + DB path
@@ -28,14 +29,11 @@ from clients.jc_mechanical.ingest import run_ingestion
 
 BASE_DIR = Path(__file__).parent
 
-# On Render, set PERSIST_DIR to your disk mount path (example: /var/data)
 PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", BASE_DIR))
 PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
-# SQLite app DB (users, contact submissions)
 DB_PATH = PERSIST_DIR / "app.db"
 
-# Dashboards folder
 TEMPLATES_DIR = BASE_DIR / "templates" / "dashboards"
 
 
@@ -102,7 +100,6 @@ init_db()
 def create_dashboard_template(username: str):
     dashboard_path = TEMPLATES_DIR / f"dashboard_{username}.html"
 
-    # Do nothing if it already exists
     if dashboard_path.exists():
         return
 
@@ -111,7 +108,6 @@ def create_dashboard_template(username: str):
     with open(base_template_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Optional: personalize the file itself
     content = content.replace("{{ username }}", username)
 
     with open(dashboard_path, "w", encoding="utf-8") as f:
@@ -158,24 +154,15 @@ def load_user(user_id):
 # ----------------------
 # BACKGROUND SCHEDULER (WEB SERVICE)
 # ----------------------
-#
-# This runs ingestion on an interval inside the web service.
-# IMPORTANT:
-# - Only do this if you have ONE web instance.
-# - If you ever scale web instances > 1, disable this (ENABLE_INGEST_SCHEDULER=0)
-#   and use a single worker instead.
-
 _scheduler_started = False
 
 
 def scheduler_loop(interval_seconds: int = 3600):
-    # optional: delay so deploy finishes and server is fully up
     time.sleep(10)
 
     while True:
         try:
             print("[SCHEDULER] Starting ingestion...")
-            # run_ingestion should enforce lock + min interval internally
             run_ingestion(min_interval_seconds=interval_seconds)
             print("[SCHEDULER] Ingestion cycle done.")
         except Exception as e:
@@ -196,10 +183,6 @@ def start_scheduler():
     print("[SCHEDULER] Background scheduler started.")
 
 
-# Start scheduler at import time if enabled
-# Render env var suggestion:
-# ENABLE_INGEST_SCHEDULER=1
-# PERSIST_DIR=/var/data
 if os.environ.get("ENABLE_INGEST_SCHEDULER", "1").strip() == "1":
     start_scheduler()
 
@@ -214,6 +197,26 @@ def start_ingestion_background(force: bool = False):
     t = threading.Thread(target=run_ingestion, kwargs={"min_interval_seconds": interval}, daemon=True)
     t.start()
 
+RECAPTCHA_SITE_KEY = os.getenv("RECAPTCHA_SITE_KEY", "")
+RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY", "")
+
+def verify_recaptcha(token: str, remoteip: str | None = None) -> bool:
+    payload = {
+        "secret": RECAPTCHA_SECRET_KEY,
+        "response": token,
+    }
+    if remoteip:
+        payload["remoteip"] = remoteip
+
+    try:
+        r = requests.post(
+            "https://www.google.com/recaptcha/api/siteverify",
+            data=payload,
+            timeout=8,
+        )
+        return bool(r.json().get("success", False))
+    except Exception:
+        return False
 
 # ----------------------
 # ROUTES
@@ -353,15 +356,27 @@ def contact():
         systems = request.form.get("systems", "").strip()
         message = request.form.get("message", "").strip()
 
+        # ✅ reCAPTCHA (added)
+        recaptcha_token = request.form.get("g-recaptcha-response", "")
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+
+        if not recaptcha_token or not verify_recaptcha(recaptcha_token, ip):
+            return render_template(
+                "contact.html",
+                success=False,
+                error="Please verify that you are not a robot.",
+                RECAPTCHA_SITE_KEY=RECAPTCHA_SITE_KEY,
+            )
+
         if not name or not email or not message:
             return render_template(
                 "contact.html",
                 success=False,
                 error="Please fill out Name, Email, and Message.",
+                RECAPTCHA_SITE_KEY=RECAPTCHA_SITE_KEY,
             )
 
         created_at = datetime.now(timezone.utc).isoformat()
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         user_agent = request.headers.get("User-Agent", "")
 
         with get_db() as con:
@@ -377,7 +392,7 @@ def contact():
         return redirect(url_for("contact", sent="1"))
 
     success = request.args.get("sent") == "1"
-    return render_template("contact.html", success=success)
+    return render_template("contact.html", success=success, RECAPTCHA_SITE_KEY=RECAPTCHA_SITE_KEY)
 
 
 @app.route("/logout")
