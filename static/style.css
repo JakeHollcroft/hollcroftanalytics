@@ -1610,3 +1610,14 @@ footer {
         transform-origin: left center;
     }
 }
+
+.btn.danger {
+    border: 1px solid rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.14);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.btn.danger:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.75);
+}

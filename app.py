@@ -332,6 +332,33 @@ def dashboard():
     except TemplateNotFound:
         return f"No dashboard template found for {current_user.dashboard_key}.", 404
 
+@app.route("/dashboard/leads/<int:submission_id>/delete", methods=["POST"])
+@login_required
+def delete_contact_submission(submission_id: int):
+    # Only allow Jake/admin dashboard to delete
+    if current_user.dashboard_key != "jake":
+        flash("Not authorized.", "error")
+        return redirect(url_for("dashboard"))
+
+    with get_db() as con:
+        # Check it exists first (optional but nice)
+        row = con.execute(
+            "SELECT id FROM contact_submissions WHERE id = ?",
+            (submission_id,),
+        ).fetchone()
+
+        if not row:
+            flash(f"Lead #{submission_id} not found.", "error")
+            return redirect(url_for("dashboard"))
+
+        con.execute(
+            "DELETE FROM contact_submissions WHERE id = ?",
+            (submission_id,),
+        )
+
+    flash(f"Deleted lead #{submission_id}.")
+    return redirect(url_for("dashboard"))
+
 
 @app.route("/dashboard/jc_mechanical/refresh", methods=["POST"])
 @login_required

@@ -45,7 +45,9 @@
                 {% endfor %}
             </tbody>
         </table>
-        <h3 style="margin-top: 28px;">Contact Submissions</h3>
+
+
+<h3 style="margin-top: 28px;">Contact Submissions</h3>
 
 <table>
     <caption>Latest Leads</caption>
@@ -59,6 +61,7 @@
             <th>Phone</th>
             <th>Systems</th>
             <th>Message</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -72,14 +75,27 @@
             <td>{{ c.phone }}</td>
             <td>{{ c.systems }}</td>
             <td style="max-width: 420px; white-space: pre-wrap;">{{ c.message }}</td>
+
+            <td>
+                <form
+                    method="post"
+                    action="{{ url_for('delete_contact_submission', submission_id=c.id) }}"
+                    onsubmit="return confirm('Delete lead #{{ c.id }}? This cannot be undone.');"
+                    style="display:inline;"
+                >
+                    <button type="submit" class="btn tiny danger">Delete</button>
+                </form>
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
+
     </div>
-</body>
-<footer>
+
+    <footer>
     <p>© 2026 Hollcroft Analytics · Tulsa, Oklahoma · Data Analytics & Business Intelligence</p>
 </footer>
+</body>
 </html>
