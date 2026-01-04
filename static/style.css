@@ -1491,10 +1491,18 @@ footer {
 }
 
 /* BOOTSTRAP TABLE OVERRIDES (make headers readable on dark) */
-.jc-dash .table {
-    color: var(--ink);
-    margin-bottom: 0;
+.jc-dash .table tbody tr td[colspan]{
+  background: linear-gradient(
+    135deg,
+    rgba(20, 184, 166, 0.06),
+    rgba(42, 167, 224, 0.04)
+  ) !important;
+  color: var(--muted) !important;
+  text-align: center;
+  font-style: italic;
+  padding: 18px 12px;
 }
+
 
 .jc-dash .table thead th {
     background: linear-gradient(
