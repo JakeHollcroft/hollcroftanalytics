@@ -1540,3 +1540,33 @@ footer {
         grid-template-columns: 1fr;
     }
 }
+.jc-dash{
+  --ink: rgba(255, 255, 255, 0.94);
+  --muted: rgba(226, 232, 240, 0.84);
+  --muted-2: rgba(226, 232, 240, 0.74);
+  --border: rgba(226, 232, 240, 0.16);
+}
+
+.jc-dash .text-muted,
+.jc-dash small,
+.jc-dash .small{
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+
+.jc-dash .jc-section-note{
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+
+.jc-dash .jc-last-refresh,
+.jc-dash .jc-last-refresh *{
+  color: var(--muted-2) !important;
+  opacity: 1 !important;
+}
+
+.jc-dash .jc-kpi-kicker{
+  color: var(--muted-2) !important;
+  opacity: 1 !important;
+}
+
