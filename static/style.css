@@ -1382,31 +1382,36 @@ footer {
 }
 
 /* Make Bootstrap table actually work on dark */
-.jc-dash .jc-table-rev{
-    margin: 0;
-    color: var(--ink);
-}
-
-.jc-dash .jc-table-rev thead th{
+/* Revenue table – explicit dark styling */
+.jc-dash .jc-table-rev thead th {
     background: linear-gradient(
         135deg,
-        rgba(20, 184, 166, 0.18),
-        rgba(42, 167, 224, 0.14)
+        rgba(20, 184, 166, 0.22),
+        rgba(42, 167, 224, 0.18)
     ) !important;
-    color: rgba(255,255,255,0.98) !important;
-    border-bottom: 1px solid var(--border) !important;
+    color: #ffffff !important;
     font-weight: 900;
-    font-size: 0.92rem;
-    padding: 12px 12px;
-    white-space: nowrap;
+    letter-spacing: 0.2px;
 }
 
-.jc-dash .jc-table-rev td,
-.jc-dash .jc-table-rev th{
-    border-color: rgba(226, 232, 240, 0.12) !important;
-    vertical-align: middle;
-    font-size: 0.95rem;
-    padding: 11px 12px;
+.jc-dash .jc-table-rev tbody td {
+    color: rgba(255, 255, 255, 0.94) !important;
+    font-weight: 600;
+}
+
+.jc-dash .jc-table-rev tbody tr {
+    background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.jc-dash .jc-table-rev tbody tr:nth-of-type(even) {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Emphasize revenue numbers */
+.jc-dash .jc-cell-money {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #ffffff !important;
 }
 
 /* Kill Bootstrap's bright striping */
@@ -1631,4 +1636,27 @@ footer {
 .btn.danger:hover {
     background: rgba(239, 68, 68, 0.22);
     border-color: rgba(239, 68, 68, 0.75);
+}
+
+/* =========================
+   HARD FIX: FONT CONTRAST
+   ========================= */
+
+/* Force readable text inside dashboard cards */
+.jc-dash .jc-card,
+.jc-dash .section-card,
+.jc-dash table,
+.jc-dash th,
+.jc-dash td {
+    color: rgba(255, 255, 255, 0.94) !important;
+}
+
+/* Kill Bootstrap table light theme behavior */
+.jc-dash .table {
+    --bs-table-color: rgba(255, 255, 255, 0.94);
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.04);
+    --bs-table-striped-color: rgba(255, 255, 255, 0.94);
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.06);
+    --bs-table-hover-color: rgba(255, 255, 255, 0.98);
 }
