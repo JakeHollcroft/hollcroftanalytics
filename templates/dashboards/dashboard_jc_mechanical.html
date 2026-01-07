@@ -23,6 +23,237 @@
     <meta property="og:title" content="Client Dashboard | Hollcroft Analytics">
     <meta property="og:description" content="Secure client dashboard by Hollcroft Analytics">
     <meta property="og:image" content="{{ url_for('static', filename='logo.png', _external=True) }}">
+
+    <!-- Roadmap section styles (scoped so it won’t break the rest of your theme) -->
+    <style>
+        .roadmap {
+            position: relative;
+            overflow: hidden;
+        }
+        .roadmap::after {
+            content: "";
+            position: absolute;
+            inset: -180px -160px auto auto;
+            width: 520px;
+            height: 520px;
+            background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.14), rgba(42, 167, 224, 0.0) 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .roadmap > * { position: relative; z-index: 1; }
+
+        .roadmap-top {
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .roadmap-kicker {
+            font-size: 0.85rem;
+            color: rgba(226, 232, 240, 0.72);
+            letter-spacing: 0.2px;
+        }
+        .roadmap-title {
+            margin: 4px 0 0;
+            font-size: 1.15rem;
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.92);
+        }
+        .roadmap-sub {
+            margin-top: 6px;
+            color: rgba(226, 232, 240, 0.80);
+            line-height: 1.55;
+            max-width: 920px;
+        }
+
+        .roadmap-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        .roadmap-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(226, 232, 240, 0.18);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .roadmap-divider {
+            height: 1px;
+            background: rgba(226, 232, 240, 0.12);
+            margin: 14px 0;
+        }
+
+        .roadmap-progress {
+            margin-top: 2px;
+        }
+        .roadmap-progress-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .roadmap-progress-label {
+            color: rgba(226, 232, 240, 0.78);
+            font-size: 0.92rem;
+        }
+        .roadmap-progress-meta {
+            color: rgba(226, 232, 240, 0.70);
+            font-size: 0.92rem;
+            white-space: nowrap;
+        }
+
+        .roadmap-grid {
+            margin-top: 14px;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 12px;
+        }
+        @media (max-width: 992px) {
+            .roadmap-grid { grid-template-columns: 1fr; }
+        }
+
+        .phase-card {
+            border: 1px solid rgba(226, 232, 240, 0.14);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 14px;
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .phase-head {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .phase-title {
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.92);
+            letter-spacing: 0.2px;
+            margin: 0;
+            font-size: 1.05rem;
+        }
+
+        .phase-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .meta-chip {
+            font-size: 0.82rem;
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(226, 232, 240, 0.18);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(226, 232, 240, 0.88);
+        }
+
+        .phase-list {
+            display: grid;
+            gap: 10px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .task-row {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px 10px;
+            border-radius: 14px;
+            border: 1px solid rgba(226, 232, 240, 0.12);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .task-left {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+        .task-name {
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.92);
+            line-height: 1.25;
+        }
+        .task-note {
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .task-right {
+            display: grid;
+            gap: 6px;
+            justify-items: end;
+            flex: 0 0 auto;
+            min-width: 152px;
+        }
+
+        .diff {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 9px;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            border: 1px solid rgba(226, 232, 240, 0.16);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.86);
+            white-space: nowrap;
+        }
+        .diff.easy { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.10); }
+        .diff.med  { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); }
+        .diff.hard { border-color: rgba(239, 68, 68, 0.35);  background: rgba(239, 68, 68, 0.10); }
+
+        /* Status pill you will update per item */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            border: 1px solid rgba(226, 232, 240, 0.16);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(226, 232, 240, 0.88);
+            white-space: nowrap;
+        }
+        .status-notstarted { border-color: rgba(148, 163, 184, 0.30); background: rgba(148, 163, 184, 0.10); }
+        .status-inprogress { border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.12); color: rgba(255, 255, 255, 0.90); }
+        .status-blocked    { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: rgba(255, 255, 255, 0.90); }
+        .status-done       { border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.12); color: rgba(255, 255, 255, 0.92); }
+
+        /* A subtle “completed” look for task rows */
+        .task-row.is-done {
+            border-color: rgba(34, 197, 94, 0.28);
+            background: rgba(34, 197, 94, 0.06);
+        }
+
+        .roadmap-note {
+            margin-top: 12px;
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 0.9rem;
+            line-height: 1.55;
+        }
+
+        .phase-wide { grid-column: 1 / -1; }
+    </style>
 </head>
 
 <body class="jc-dash">
@@ -123,6 +354,257 @@
     </section>
 </div>
 
+<!-- NEW: KPI EXPANSION ROADMAP / PROGRESS (NO CHECKBOXES) -->
+<section class="section-card roadmap" aria-labelledby="roadmap-title">
+
+    <div class="roadmap-top">
+        <div>
+            <div class="roadmap-kicker">Build roadmap</div>
+            <h2 id="roadmap-title" class="roadmap-title">KPI Expansion Progress</h2>
+        </div>
+
+        <div class="roadmap-badges">
+            <span class="roadmap-pill">Status: In progress</span>
+            <span class="roadmap-pill">Last refreshed: {{ last_refresh }}</span>
+        </div>
+    </div>
+
+    <div class="roadmap-divider"></div>
+
+    <!--
+      ==========================
+      HOW YOU UPDATE PROGRESS
+      ==========================
+      Each KPI item below has:
+        - data-done="0" or data-done="1"
+        - a status pill (Not started / In progress / Blocked / Done)
+        - an optional .is-done class for a completed visual look
+
+      When you finish an item:
+        1) Change data-done="0" -> data-done="1"
+        2) Change the status pill classes to "status-done"
+        3) (Optional) add class "is-done" to the .task-row
+        4) Update the status text to "Done"
+
+      Example:
+        <li class="task-row is-done" data-done="1">
+            ...
+            <span class="status-pill status-done">Done</span>
+        </li>
+    -->
+
+    <div class="roadmap-progress">
+        <div class="roadmap-progress-top">
+            <div class="roadmap-progress-label">Overall completion</div>
+            <div class="roadmap-progress-meta">
+                <span id="roadmap-done">0</span>/<span id="roadmap-total">0</span> items complete
+                • <span id="roadmap-pct">0</span>%
+            </div>
+        </div>
+
+        <div class="progress" style="height: 14px;">
+            <div id="roadmap-progress-bar"
+                 class="progress-bar bg-info progress-bar-striped"
+                 role="progressbar"
+                 style="width: 0%;"
+                 aria-valuenow="0"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+            </div>
+        </div>
+
+        <!--
+          OPTIONAL: If you want a manual override instead of data-done flags:
+            - Set data-manual-pct="35" on #roadmap-progress-bar
+            - And delete the JS that calculates done/total
+        -->
+    </div>
+
+    <div class="roadmap-grid">
+
+        <!-- Phase 1 -->
+        <article class="phase-card" aria-label="Phase 1">
+            <div class="phase-head">
+                <h3 class="phase-title">Phase 1 (fast value)</h3>
+                <div class="phase-meta">
+                    <span class="meta-chip">Quick wins</span>
+                    <span class="meta-chip">Lowest complexity</span>
+                </div>
+            </div>
+
+            <ul class="phase-list">
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Total revenue by department</div>
+                        <div class="task-note">Residential, commercial, maintenance, demand service, change out, plus service plan revenue.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff easy">Difficulty: Very easy</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Average ticket (service only)</div>
+                        <div class="task-note">Overall and per technician. Flag under $450.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff easy">Difficulty: Easy</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Lead turnover</div>
+                        <div class="task-note">Estimate won vs lost, estimate vs call.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff med">Difficulty: Easy–medium</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">DFO (Diagnostic Fee Only)</div>
+                        <div class="task-note">Monthly and yearly. Flag under 5% as green.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff med">Difficulty: Medium</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+            </ul>
+        </article>
+
+        <!-- Phase 2 -->
+        <article class="phase-card" aria-label="Phase 2">
+            <div class="phase-head">
+                <h3 class="phase-title">Phase 2 (operational insight)</h3>
+                <div class="phase-meta">
+                    <span class="meta-chip">More definitions</span>
+                    <span class="meta-chip">Better accountability</span>
+                </div>
+            </div>
+
+            <ul class="phase-list">
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Club agreement conversions</div>
+                        <div class="task-note">Service calls with Wizard Club member, conversion rate, flag under 50% as red.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff med">Difficulty: Medium</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Callback percentage</div>
+                        <div class="task-note">Service and install crews. Thresholds: ≤3% green, 3–7% orange, ≥8% red.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff hard">Difficulty: Medium–hard</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Residential budget progress</div>
+                        <div class="task-note">How much until monthly budget target is met (requires monthly target value).</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff med">Difficulty: Medium</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Revenue per employee</div>
+                        <div class="task-note">Requires definition of active employees and time windows.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff hard">Difficulty: Hard</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+            </ul>
+        </article>
+
+        <!-- Phase 3 -->
+        <article class="phase-card phase-wide" aria-label="Phase 3">
+            <div class="phase-head">
+                <h3 class="phase-title">Phase 3 (advanced, premium KPIs)</h3>
+                <div class="phase-meta">
+                    <span class="meta-chip">Most complex</span>
+                    <span class="meta-chip">Requires config tables</span>
+                    <span class="meta-chip">Per technician cards</span>
+                </div>
+            </div>
+
+            <ul class="phase-list">
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Service efficiency (billed hours vs paid hours)</div>
+                        <div class="task-note">o	Billed hours vs paid hours</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff hard">Difficulty: Hard</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Gross profit per job per technician per hour (service techs only)</div>
+                        <div class="task-note">
+                            Needs parts cost, parts duration, job classification, fixed labor assumption ($525),
+                            and clear attribution rules for multi-tech jobs. Target: $150/hr or greater is green.
+                        </div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff hard">Difficulty: Very hard</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+
+                <li class="task-row" data-done="0">
+                    <div class="task-left">
+                        <div class="task-name">Per technician KPI cards</div>
+                        <div class="task-note">Cards per employee: average ticket, gross profit/hr, callbacks, first-time completion, DFO.</div>
+                    </div>
+                    <div class="task-right">
+                        <span class="diff med">Difficulty: Medium</span>
+                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
+                        <span class="status-pill status-notstarted">Not started</span>
+                    </div>
+                </li>
+            </ul>
+
+            <div class="roadmap-note">
+                Note: Hard items depend on definitions and consistent tagging. If definitions change midstream,
+                KPI logic may require rework.
+            </div>
+        </article>
+
+    </div>
+</section>
+
 <!-- REPEAT JOBS TABLE -->
 <section class="section-card" aria-labelledby="repeat-jobs-title">
 
@@ -186,11 +668,35 @@
 
 <!-- Scripts -->
 <script>
+    // FTC progress bar width
     const ftcBar = document.getElementById("ftc-progress-bar");
     if (ftcBar) {
         const pct = parseFloat(ftcBar.dataset.ftc || "0");
         ftcBar.style.width = Math.max(0, Math.min(100, pct)) + "%";
     }
+
+    // Roadmap progress bar (reads data-done flags that YOU update in HTML)
+    (function () {
+        const items = Array.from(document.querySelectorAll(".phase-list .task-row"));
+        const total = items.length;
+        const done = items.filter(el => String(el.getAttribute("data-done") || "0") === "1").length;
+
+        const doneEl = document.getElementById("roadmap-done");
+        const totalEl = document.getElementById("roadmap-total");
+        const pctEl = document.getElementById("roadmap-pct");
+        const bar = document.getElementById("roadmap-progress-bar");
+
+        if (doneEl) doneEl.textContent = String(done);
+        if (totalEl) totalEl.textContent = String(total);
+
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        if (pctEl) pctEl.textContent = String(pct);
+
+        if (bar) {
+            bar.style.width = pct + "%";
+            bar.setAttribute("aria-valuenow", String(pct));
+        }
+    })();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
