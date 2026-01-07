@@ -3,9 +3,6 @@ from pathlib import Path
 import os
 import pandas as pd
 
-pd.set_option("display.max_columns", None)
-pd.set_option("display.width", None)
-pd.set_option("display.max_colwidth", None)
 
 DB_FILE = Path(os.environ.get("PERSIST_DIR", ".")) / "housecall_data.duckdb"
 
@@ -24,4 +21,12 @@ print(
     """).df()
 )
 
+
+print("\n=== ALL DISTINCT TAGS ===")
+print(
+    conn.execute("""
+        SELECT DISTINCT(tags)
+        FROM jobs
+    """).df()
+)
 conn.close()
