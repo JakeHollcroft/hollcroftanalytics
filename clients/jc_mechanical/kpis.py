@@ -5,12 +5,14 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import os
-import re
 
 PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 
+# -----------------------------
+# Tables / schema
+# -----------------------------
 def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     # metadata
     conn.execute("""
@@ -39,7 +41,7 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
             tags TEXT
         )
     """)
-    # backward compatible
+    # Backward-compatible schema upgrade
     try:
         conn.execute("ALTER TABLE jobs ADD COLUMN tags TEXT")
     except Exception:
@@ -88,6 +90,9 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
 def _safe_df(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     try:
         return conn.execute(sql).df()
@@ -96,6 +101,9 @@ def _safe_df(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
 
 
 def _ensure_columns(df: pd.DataFrame, cols_with_dtypes: dict) -> pd.DataFrame:
+    """
+    Ensures df has the columns listed. If missing, create empty column with dtype.
+    """
     for col, dtype in cols_with_dtypes.items():
         if col not in df.columns:
             try:
@@ -105,85 +113,92 @@ def _ensure_columns(df: pd.DataFrame, cols_with_dtypes: dict) -> pd.DataFrame:
     return df
 
 
-def _money_fmt(x: float) -> str:
-    try:
-        return f"${x:,.2f}"
-    except Exception:
-        return "$0.00"
-
-
-def _normalize_tags(tags_val) -> list[str]:
+def _normalize_tags(tags_val) -> str:
     """
-    jobs.tags is stored as comma-separated string (per ingest).
-    Return a list of clean tag strings.
+    Normalize tags into a single lowercased string with comma delimiters.
+    Example: "Residential Service, Callback" -> "residential service,callback"
     """
-    if tags_val is None:
-        return []
-    if isinstance(tags_val, float) and pd.isna(tags_val):
-        return []
-    s = str(tags_val).strip()
-    if not s or s.lower() == "none":
-        return []
-    parts = [p.strip() for p in s.split(",")]
-    return [p for p in parts if p]
+    if tags_val is None or (isinstance(tags_val, float) and pd.isna(tags_val)):
+        return ""
+    s = str(tags_val)
+    parts = [p.strip().lower() for p in s.split(",") if p.strip()]
+    return ",".join(parts)
 
 
-def _category_from_tags(tags: list[str]) -> str:
+def _tag_has(tags_norm: str, needle: str) -> bool:
     """
-    Map job tags into one bucket for revenue breakdown.
-    Tweak these rules as your tagging matures.
+    Check membership on normalized comma-delimited tags.
     """
-    if not tags:
-        return "Other / Unclassified"
+    if not tags_norm:
+        return False
+    needle = needle.strip().lower()
+    parts = tags_norm.split(",")
+    return needle in parts
 
-    t = " | ".join(tags).lower()
 
-    # Prioritize commercial vs residential
-    if "commercial" in t:
-        if "maintenance" in t:
-            return "Commercial Maintenance"
-        if "install" in t:
-            return "Commercial Install"
-        if "service" in t:
-            return "Commercial Service"
-        return "Commercial"
+def _map_category_from_tags(tags_norm: str) -> str:
+    """
+    Map a job's tags to ONE revenue category bucket.
+    Priority: install/change-out > maintenance > service.
+    """
+    is_res = _tag_has(tags_norm, "residential")
+    is_com = _tag_has(tags_norm, "commercial")
 
-    if "residential" in t:
-        if "maintenance" in t:
-            return "Residential Maintenance"
-        if "install" in t:
-            return "Residential Install"
-        if "service" in t:
-            return "Residential Service"
-        return "Residential"
+    is_install = _tag_has(tags_norm, "install") or _tag_has(tags_norm, "installation") or _tag_has(tags_norm, "change out") or _tag_has(tags_norm, "change-out")
+    is_maint = _tag_has(tags_norm, "maintenance")
+    is_service = _tag_has(tags_norm, "service") or _tag_has(tags_norm, "demand service") or _tag_has(tags_norm, "demand")
 
-    # Other common buckets
-    if "new construction" in t:
-        return "New Construction"
-    if "campaign" in t:
-        return "Campaigns"
-    if "warranty" in t:
-        return "Warranty"
-    if "callback" in t:
-        return "Callback"
+    s = tags_norm
+    if "residential install" in s or "residential change out" in s or "residential change-out" in s:
+        is_res, is_install = True, True
+    if "commercial install" in s or "commercial change out" in s or "commercial change-out" in s:
+        is_com, is_install = True, True
+    if "residential maintenance" in s:
+        is_res, is_maint = True, True
+    if "commercial maintenance" in s:
+        is_com, is_maint = True, True
+    if "residential service" in s or "residential demand service" in s:
+        is_res, is_service = True, True
+    if "commercial service" in s or "commercial demand service" in s:
+        is_com, is_service = True, True
+
+    if is_install and is_res:
+        return "Residential change out"
+    if is_install and is_com:
+        return "Commercial change out"
+    if is_maint and is_res:
+        return "Residential maintenance"
+    if is_maint and is_com:
+        return "Commercial maintenance"
+    if is_service and is_res:
+        return "Residential demand service"
+    if is_service and is_com:
+        return "Commercial demand service"
 
     return "Other / Unclassified"
 
 
-def _coerce_dt_series(series: pd.Series) -> pd.Series:
-    # Handles ISO with Z and nulls safely.
-    return pd.to_datetime(series, errors="coerce", utc=True)
+def _format_currency(x: float) -> str:
+    try:
+        return "${:,.0f}".format(float(x))
+    except Exception:
+        return "$0"
 
 
+# -----------------------------
+# KPI builder
+# -----------------------------
 def get_dashboard_kpis():
     conn = duckdb.connect(DB_FILE)
     try:
         ensure_tables(conn)
 
+        # Load data (safe even if first run or DB contention)
         df_jobs = _safe_df(conn, "SELECT * FROM jobs")
         df_customers = _safe_df(conn, "SELECT * FROM customers")
         df_invoices = _safe_df(conn, "SELECT * FROM invoices")
 
+        # Ensure expected columns exist even if tables are empty
         df_jobs = _ensure_columns(
             df_jobs,
             {
@@ -222,20 +237,19 @@ def get_dashboard_kpis():
                 "status": "object",
                 "amount": "float64",
                 "due_amount": "float64",
-                "invoice_date": "object",
                 "paid_at": "object",
-                "sent_at": "object",
-                "due_at": "object",
             },
         )
 
-        # -----------------------------
-        # Last refresh
-        # -----------------------------
+        # -----------------------------------
+        # Last refresh (safe if missing)
+        # -----------------------------------
         last_refresh = None
         try:
-            row = conn.execute("SELECT value FROM metadata WHERE key = 'last_refresh'").fetchone()
-            last_refresh = row[0] if row else None
+            last_refresh_row = conn.execute("""
+                SELECT value FROM metadata WHERE key = 'last_refresh'
+            """).fetchone()
+            last_refresh = last_refresh_row[0] if last_refresh_row else None
         except Exception:
             last_refresh = None
 
@@ -249,22 +263,59 @@ def get_dashboard_kpis():
         else:
             last_refresh_display = "Never"
 
-        # -----------------------------
+        # -----------------------------------
         # Data cleanup
-        # -----------------------------
-        # amounts are cents -> dollars
-        df_jobs["total_amount"] = pd.to_numeric(df_jobs.get("total_amount", 0), errors="coerce").fillna(0) / 100
-        df_jobs["outstanding_balance"] = pd.to_numeric(df_jobs.get("outstanding_balance", 0), errors="coerce").fillna(0) / 100
-        df_jobs["num_appointments"] = pd.to_numeric(df_jobs.get("num_appointments", 0), errors="coerce").fillna(0).astype(int)
-        df_jobs["completed_at"] = _coerce_dt_series(df_jobs.get("completed_at"))
+        # -----------------------------------
+        # Housecall often returns cents; keep /100 scaling
+        df_jobs["total_amount"] = (
+            pd.to_numeric(df_jobs.get("total_amount", 0), errors="coerce").fillna(0) / 100
+        )
 
-        df_invoices["amount"] = pd.to_numeric(df_invoices.get("amount", 0), errors="coerce").fillna(0) / 100
-        df_invoices["due_amount"] = pd.to_numeric(df_invoices.get("due_amount", 0), errors="coerce").fillna(0) / 100
+        df_jobs["outstanding_balance"] = (
+            pd.to_numeric(df_jobs.get("outstanding_balance", 0), errors="coerce").fillna(0) / 100
+        )
 
-        # -----------------------------
-        # Joins for FTC and table
-        # -----------------------------
-        if not df_jobs.empty and not df_customers.empty and {"customer_id"}.issubset(df_jobs.columns) and {"customer_id"}.issubset(df_customers.columns):
+        df_jobs["num_appointments"] = (
+            pd.to_numeric(df_jobs.get("num_appointments", 0), errors="coerce").fillna(0).astype(int)
+        )
+
+        df_jobs["completed_at"] = pd.to_datetime(df_jobs.get("completed_at"), errors="coerce", utc=True)
+
+        # Normalize job tags for category mapping
+        df_jobs["tags_norm"] = df_jobs.get("tags", "").apply(_normalize_tags)
+
+        df_invoices["amount"] = (
+            pd.to_numeric(df_invoices.get("amount", 0), errors="coerce").fillna(0) / 100
+        )
+
+        df_invoices["due_amount"] = (
+            pd.to_numeric(df_invoices.get("due_amount", 0), errors="coerce").fillna(0) / 100
+        )
+
+        # Parse paid_at for YTD filter (used for paid)
+        df_invoices["paid_at_dt"] = pd.to_datetime(df_invoices.get("paid_at"), errors="coerce", utc=True)
+
+        # -----------------------------------
+        # Joins
+        # -----------------------------------
+        # invoices -> customer_id via jobs (safe even if empty)
+        if not df_invoices.empty and not df_jobs.empty and {"job_id", "customer_id"}.issubset(df_jobs.columns):
+            df_invoices = df_invoices.merge(
+                df_jobs[["job_id", "customer_id"]],
+                how="left",
+                on="job_id",
+            )
+        else:
+            if "customer_id" not in df_invoices.columns:
+                df_invoices["customer_id"] = pd.Series(dtype="object")
+
+        # jobs -> customer name
+        if (
+            not df_jobs.empty
+            and not df_customers.empty
+            and "customer_id" in df_jobs.columns
+            and "customer_id" in df_customers.columns
+        ):
             df_jobs = df_jobs.merge(
                 df_customers[["customer_id", "first_name", "last_name"]],
                 how="left",
@@ -277,25 +328,100 @@ def get_dashboard_kpis():
                 df_jobs["last_name"] = pd.Series(dtype="object")
 
         df_jobs["customer_name"] = (
-            df_jobs["first_name"].fillna("Unknown").astype(str)
-            + " "
-            + df_jobs["last_name"].fillna("").astype(str)
+            df_jobs["first_name"].fillna("Unknown").astype(str) + " " +
+            df_jobs["last_name"].fillna("").astype(str)
         ).str.strip()
 
-        # -----------------------------
-        # FTC: completed jobs YTD
-        # -----------------------------
-        completed_statuses = ["complete unrated", "complete rated"]
-        df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()
-
+        # -----------------------------------
+        # Time windows (YTD)
+        # -----------------------------------
         central = ZoneInfo("America/Chicago")
         now_central = datetime.now(central)
         start_of_year_central = datetime(now_central.year, 1, 1, tzinfo=central)
         start_of_year_utc = start_of_year_central.astimezone(ZoneInfo("UTC"))
 
+        # -----------------------------------
+        # Revenue KPI (YTD)
+        # paid + open + pending_payment
+        # -----------------------------------
+        revenue_statuses = {"paid", "open", "pending_payment"}
+        df_rev = df_invoices[df_invoices["status"].astype(str).str.lower().isin(revenue_statuses)].copy()
+
+        # YTD filter logic:
+        # - paid: use paid_at when available; if missing, fall back to service_date/invoice_date
+        # - open/pending_payment: use service_date or invoice_date (since paid_at is usually null)
+        df_rev["service_date_dt"] = pd.to_datetime(df_rev.get("service_date"), errors="coerce", utc=True)
+        df_rev["invoice_date_dt"] = pd.to_datetime(df_rev.get("invoice_date"), errors="coerce", utc=True)
+
+        def _row_effective_dt(row):
+            st = str(row.get("status") or "").lower()
+            if st == "paid":
+                if pd.notna(row.get("paid_at_dt")):
+                    return row.get("paid_at_dt")
+            # fallbacks
+            if pd.notna(row.get("service_date_dt")):
+                return row.get("service_date_dt")
+            if pd.notna(row.get("invoice_date_dt")):
+                return row.get("invoice_date_dt")
+            return pd.NaT
+
+        if not df_rev.empty:
+            df_rev["effective_dt"] = df_rev.apply(_row_effective_dt, axis=1)
+            df_rev = df_rev[df_rev["effective_dt"] >= start_of_year_utc].copy()
+        else:
+            df_rev["effective_dt"] = pd.NaT
+
+        # Join tags onto invoices for category breakdown
+        if not df_rev.empty and not df_jobs.empty and "job_id" in df_jobs.columns:
+            df_rev = df_rev.merge(
+                df_jobs[["job_id", "tags_norm"]],
+                how="left",
+                on="job_id",
+            )
+        else:
+            if "tags_norm" not in df_rev.columns:
+                df_rev["tags_norm"] = ""
+
+        df_rev["category"] = df_rev["tags_norm"].fillna("").apply(_map_category_from_tags)
+
+        total_revenue_ytd = float(df_rev["amount"].sum()) if not df_rev.empty else 0.0
+
+        breakdown = (
+            df_rev.groupby("category", dropna=False)["amount"]
+            .sum()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={"amount": "revenue"})
+        )
+
+        revenue_breakdown = []
+        if not breakdown.empty:
+            for _, row in breakdown.iterrows():
+                revenue_breakdown.append(
+                    {
+                        "category": str(row["category"]),
+                        "revenue": float(row["revenue"]),
+                        "revenue_display": _format_currency(row["revenue"]),
+                    }
+                )
+
+        total_revenue_display = _format_currency(total_revenue_ytd)
+
+        # -----------------------------------
+        # Job subsets: completed jobs THIS YEAR and forward
+        # -----------------------------------
+        completed_statuses = ["complete unrated", "complete rated"]
+        df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()
+
+        # completed_at is UTC-aware datetime because we parsed with utc=True
         df_completed = df_completed[df_completed["completed_at"] >= start_of_year_utc].copy()
 
+        # -----------------------------------
+        # First-Time Completion KPI
+        # Completed jobs with exactly 1 appointment.
+        # -----------------------------------
         completed_jobs = len(df_completed)
+
         first_time_completed = int((df_completed["num_appointments"] == 1).sum()) if completed_jobs > 0 else 0
         repeat_visit_completed = int((df_completed["num_appointments"] >= 2).sum()) if completed_jobs > 0 else 0
 
@@ -308,7 +434,10 @@ def get_dashboard_kpis():
 
         first_time_completion_target = 85
 
-        # repeat jobs table
+        # -----------------------------------
+        # Repeat-visit table (action list)
+        # Show most recent completed jobs with num_appointments >= 2
+        # -----------------------------------
         repeat_jobs_df = df_completed[df_completed["num_appointments"] >= 2].copy()
         repeat_jobs_df = repeat_jobs_df.sort_values(by="completed_at", ascending=False)
 
@@ -322,6 +451,7 @@ def get_dashboard_kpis():
 
         repeat_jobs_df["completed_at_central"] = repeat_jobs_df["completed_at"].apply(fmt_dt)
 
+        # Keep table small + useful
         needed_cols = [
             "job_id",
             "customer_name",
@@ -333,76 +463,16 @@ def get_dashboard_kpis():
         for c in needed_cols:
             if c not in repeat_jobs_df.columns:
                 repeat_jobs_df[c] = ""
+
         repeat_jobs_table = repeat_jobs_df[needed_cols].head(25)
 
-        # -----------------------------
-        # Revenue: invoices YTD, statuses paid + open + pending_payment
-        # -----------------------------
-        revenue_statuses = {"paid", "open", "pending_payment"}
-
-        df_rev = df_invoices.copy()
-        if not df_rev.empty:
-            df_rev["status"] = df_rev["status"].astype(str).str.strip().str.lower()
-            df_rev = df_rev[df_rev["status"].isin(revenue_statuses)].copy()
-
-            # Choose an invoice "as-of" date for YTD:
-            # invoice_date preferred, else paid_at, else sent_at, else due_at
-            inv_dt = _coerce_dt_series(df_rev.get("invoice_date"))
-            paid_dt = _coerce_dt_series(df_rev.get("paid_at"))
-            sent_dt = _coerce_dt_series(df_rev.get("sent_at"))
-            due_dt = _coerce_dt_series(df_rev.get("due_at"))
-
-            df_rev["rev_dt"] = inv_dt
-            df_rev.loc[df_rev["rev_dt"].isna(), "rev_dt"] = paid_dt[df_rev["rev_dt"].isna()]
-            df_rev.loc[df_rev["rev_dt"].isna(), "rev_dt"] = sent_dt[df_rev["rev_dt"].isna()]
-            df_rev.loc[df_rev["rev_dt"].isna(), "rev_dt"] = due_dt[df_rev["rev_dt"].isna()]
-
-            df_rev = df_rev[df_rev["rev_dt"] >= start_of_year_utc].copy()
-
-            # join tags from jobs
-            if not df_jobs.empty and "job_id" in df_jobs.columns and "job_id" in df_rev.columns:
-                df_rev = df_rev.merge(
-                    df_jobs[["job_id", "tags"]],
-                    how="left",
-                    on="job_id",
-                )
-            else:
-                df_rev["tags"] = None
-
-            # normalize + categorize
-            df_rev["tags_list"] = df_rev["tags"].apply(_normalize_tags)
-            df_rev["category"] = df_rev["tags_list"].apply(_category_from_tags)
-
-        total_revenue_ytd = float(df_rev["amount"].sum()) if not df_rev.empty else 0.0
-
-        # breakdown
-        if not df_rev.empty:
-            breakdown = (
-                df_rev.groupby("category", as_index=False)["amount"]
-                .sum()
-                .sort_values("amount", ascending=False)
-            )
-        else:
-            breakdown = pd.DataFrame(columns=["category", "amount"])
-
-        # format for template
-        revenue_breakdown_ytd = []
-        for _, row in breakdown.iterrows():
-            revenue_breakdown_ytd.append(
-                {
-                    "category": str(row["category"]),
-                    "revenue": float(row["amount"]),
-                    "revenue_display": _money_fmt(float(row["amount"])),
-                }
-            )
-
-        # -----------------------------
+        # -----------------------------------
         # Refresh status
-        # -----------------------------
+        # -----------------------------------
         refresh_status = get_refresh_status()
 
         return {
-            # existing FTC fields (kept)
+            # Existing KPI
             "first_time_completion_pct": first_time_completion_pct,
             "first_time_completion_target": first_time_completion_target,
             "first_time_completed": first_time_completed,
@@ -410,13 +480,14 @@ def get_dashboard_kpis():
             "completed_jobs": completed_jobs,
             "repeat_visit_pct": repeat_visit_pct,
             "repeat_jobs": repeat_jobs_table.to_dict(orient="records"),
-            "last_refresh": last_refresh_display,
 
-            # new revenue fields
+            # New KPI (YTD)
             "total_revenue_ytd": total_revenue_ytd,
-            "total_revenue_ytd_display": _money_fmt(total_revenue_ytd),
-            "revenue_breakdown_ytd": revenue_breakdown_ytd,
+            "total_revenue_ytd_display": total_revenue_display,
+            "revenue_breakdown_ytd": revenue_breakdown,
 
+            # Meta
+            "last_refresh": last_refresh_display,
             **refresh_status,
         }
 
@@ -436,6 +507,7 @@ def get_refresh_status():
         if not row:
             return {"can_refresh": True, "next_refresh": "Now"}
 
+        # 1-hour constraint
         try:
             last_refresh_utc = datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
         except Exception:

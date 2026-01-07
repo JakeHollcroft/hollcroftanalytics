@@ -221,7 +221,6 @@
         .diff.med  { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); }
         .diff.hard { border-color: rgba(239, 68, 68, 0.35);  background: rgba(239, 68, 68, 0.10); }
 
-        /* Status pill you will update per item */
         .status-pill {
             display: inline-flex;
             align-items: center;
@@ -239,7 +238,6 @@
         .status-blocked    { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: rgba(255, 255, 255, 0.90); }
         .status-done       { border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.12); color: rgba(255, 255, 255, 0.92); }
 
-        /* A subtle “completed” look for task rows */
         .task-row.is-done {
             border-color: rgba(34, 197, 94, 0.28);
             background: rgba(34, 197, 94, 0.06);
@@ -253,71 +251,6 @@
         }
 
         .phase-wide { grid-column: 1 / -1; }
-
-        /* ----------------------------
-           NEW: Revenue section styles
-           ---------------------------- */
-        .kpi-split {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 14px;
-        }
-        @media (min-width: 992px) {
-            .kpi-split { grid-template-columns: 0.9fr 1.1fr; }
-        }
-
-        .rev-card {
-            border: 1px solid rgba(226, 232, 240, 0.14);
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.04);
-            padding: 18px;
-            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-        }
-        .rev-kicker {
-            color: rgba(226, 232, 240, 0.72);
-            font-size: 0.85rem;
-            letter-spacing: 0.2px;
-        }
-        .rev-title {
-            margin: 6px 0 0;
-            font-size: 1.15rem;
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.92);
-        }
-        .rev-big {
-            margin-top: 10px;
-            font-size: 2.2rem;
-            font-weight: 900;
-            letter-spacing: 0.3px;
-            color: rgba(255, 255, 255, 0.96);
-        }
-        .rev-sub {
-            margin-top: 6px;
-            color: rgba(226, 232, 240, 0.75);
-            font-size: 0.95rem;
-        }
-
-        .rev-table-wrap {
-            border: 1px solid rgba(226, 232, 240, 0.14);
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.03);
-            padding: 14px;
-        }
-        .rev-table-title {
-            margin: 0 0 10px;
-            font-weight: 900;
-            font-size: 1.05rem;
-            color: rgba(255, 255, 255, 0.92);
-        }
-        .rev-table-note {
-            margin: -2px 0 12px;
-            color: rgba(226, 232, 240, 0.72);
-            font-size: 0.9rem;
-            line-height: 1.45;
-        }
-        .rev-table .muted {
-            color: rgba(226, 232, 240, 0.72);
-        }
     </style>
 </head>
 
@@ -358,77 +291,78 @@
     else 'bg-danger'
 %}
 
-<!-- -----------------------------------
-     NEW: TOTAL REVENUE (YTD) + BREAKDOWN
-     -----------------------------------
-     Requires kpis.py to provide:
-       - total_revenue_ytd_display
-       - revenue_breakdown_ytd (list of {category, revenue_display, revenue})
+<!--
+  NEW: top dashboard grid
+  - Revenue cards flow cleanly with FTC card
 -->
-<section class="kpi-wrap" aria-label="Revenue KPIs">
-    <div class="kpi-split">
+<section class="jc-dash-grid" aria-label="Top KPIs">
 
-        <!-- Total revenue card -->
-        <article class="rev-card" aria-labelledby="rev-total-title">
-            <div class="rev-kicker">Revenue KPI</div>
-            <h2 id="rev-total-title" class="rev-title">Total Revenue (YTD)</h2>
-
-            <div class="rev-big">
-                {{ total_revenue_ytd_display }}
+    <!-- Revenue: Total -->
+    <article class="jc-card jc-card-rev" aria-labelledby="rev-total-title">
+        <div class="jc-card-head">
+            <div>
+                <div class="jc-kicker">Revenue KPI</div>
+                <h2 id="rev-total-title" class="jc-title">Total Revenue (YTD)</h2>
             </div>
+        </div>
 
-            <div class="rev-sub">
-                Includes invoice statuses: paid, open, pending_payment
+        <div class="jc-big-money">
+            {{ total_revenue_ytd_display }}
+        </div>
+
+        <div class="jc-subtext">
+            Includes invoice statuses: paid, open, pending_payment
+        </div>
+    </article>
+
+    <!-- Revenue: Breakdown -->
+    <article class="jc-card jc-card-rev" aria-labelledby="rev-breakdown-title">
+        <div class="jc-card-head">
+            <div>
+                <div class="jc-kicker">Revenue breakdown</div>
+                <h2 id="rev-breakdown-title" class="jc-title">Revenue by Category (YTD)</h2>
             </div>
-        </article>
+        </div>
 
-        <!-- Breakdown table -->
-        <article class="rev-table-wrap" aria-labelledby="rev-breakdown-title">
-            <h3 id="rev-breakdown-title" class="rev-table-title">Revenue by Category (YTD)</h3>
-            <div class="rev-table-note">
-                Categories are derived from job tags. Unclassified items fall under “Other / Unclassified”.
-            </div>
+        <div class="jc-subtext" style="margin-top:-4px;">
+            Categories are derived from job tags. Unclassified items fall under “Other / Unclassified”.
+        </div>
 
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle rev-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Category</th>
-                            <th scope="col" class="text-end">Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
-                            {% for r in revenue_breakdown_ytd %}
-                                <tr>
-                                    <td>{{ r.category }}</td>
-                                    <td class="text-end">{{ r.revenue_display }}</td>
-                                </tr>
-                            {% endfor %}
-                        {% else %}
+        <div class="table-responsive jc-table-wrap">
+            <table class="table table-sm table-striped align-middle jc-table-rev">
+                <thead>
+                    <tr>
+                        <th scope="col">Category</th>
+                        <th scope="col" class="text-end">Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
+                        {% for r in revenue_breakdown_ytd %}
                             <tr>
-                                <td colspan="2" class="muted">
-                                    No revenue rows found for YTD with statuses paid, open, pending_payment.
-                                </td>
+                                <td class="jc-cell-main">{{ r.category }}</td>
+                                <td class="text-end jc-cell-money">{{ r.revenue_display }}</td>
                             </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
-        </article>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="2" class="jc-empty">
+                                No revenue rows found for YTD with statuses paid, open, pending_payment.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </article>
 
-    </div>
-</section>
-
-<!-- KPI CARD -->
-<div class="kpi-wrap">
-    <section class="kpi-card" aria-labelledby="kpi-ftc-title">
-
+    <!-- FTC (spans full width on large screens, after revenue) -->
+    <article class="jc-card jc-card-wide" aria-labelledby="kpi-ftc-title">
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <div class="text-muted jc-kpi-kicker">Quality KPI</div>
+                <div class="jc-kicker">Quality KPI</div>
 
-                <h2 id="kpi-ftc-title" class="jc-kpi-title">
+                <h2 id="kpi-ftc-title" class="jc-title">
                     First-Time Completion
                 </h2>
 
@@ -443,7 +377,7 @@
             </div>
 
             <div class="text-end">
-                <div class="text-muted jc-refresh-label">Last refreshed</div>
+                <div class="jc-refresh-label">Last refreshed</div>
                 <div class="jc-refresh-value">{{ last_refresh }}</div>
             </div>
         </div>
@@ -477,9 +411,9 @@
                 <div class="value">{{ repeat_visit_pct }}%</div>
             </div>
         </div>
+    </article>
 
-    </section>
-</div>
+</section>
 
 <!-- NEW: KPI EXPANSION ROADMAP / PROGRESS (NO CHECKBOXES) -->
 <section class="section-card roadmap" aria-labelledby="roadmap-title">
@@ -497,28 +431,6 @@
     </div>
 
     <div class="roadmap-divider"></div>
-
-    <!--
-      ==========================
-      HOW YOU UPDATE PROGRESS
-      ==========================
-      Each KPI item below has:
-        - data-done="0" or data-done="1"
-        - a status pill (Not started / In progress / Blocked / Done)
-        - an optional .is-done class for a completed visual look
-
-      When you finish an item:
-        1) Change data-done="0" -> data-done="1"
-        2) Change the status pill classes to "status-done"
-        3) (Optional) add class "is-done" to the .task-row
-        4) Update the status text to "Done"
-
-      Example:
-        <li class="task-row is-done" data-done="1">
-            ...
-            <span class="status-pill status-done">Done</span>
-        </li>
-    -->
 
     <div class="roadmap-progress">
         <div class="roadmap-progress-top">

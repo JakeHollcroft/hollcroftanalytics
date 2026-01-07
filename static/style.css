@@ -1238,14 +1238,6 @@ footer {
     }
 }
 
-.map-shell {
-    margin-top: 10px;
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.12);
-    background: rgba(255, 255, 255, 0.03);
-}
-
 .map-embed {
     width: 100%;
     height: 220px;
@@ -1279,86 +1271,30 @@ footer {
     font-size: 0.95rem;
 }
 
-/* DASHBOARD TABLES (dark theme) */
-.dashboard-container table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-/* table header */
-.dashboard-container thead th {
-    background: linear-gradient(
-        135deg,
-        rgba(20, 184, 166, 0.18),
-        rgba(42, 167, 224, 0.14)
-    );
-    color: rgba(255, 255, 255, 0.96);
-    font-weight: 700;
-    font-size: 0.92rem;
-    padding: 12px 10px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-}
-
-/* table cells */
-.dashboard-container td {
-    padding: 10px;
-    color: var(--ink);
-    font-size: 0.92rem;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
-}
-
-/* subtle row hover */
-.dashboard-container tbody tr:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-/* zebra striping */
-.dashboard-container tbody tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.02);
-}
-
-/* captions */
-.dashboard-container caption {
-    caption-side: top;
-    text-align: left;
-    font-weight: 800;
-    font-size: 1.05rem;
-    color: var(--ink);
-    margin-bottom: 8px;
-}
-
-/* constrain long message column */
-.dashboard-container td:last-child {
-    max-width: 420px;
-    white-space: pre-wrap;
-    line-height: 1.5;
-}
-
-/* responsive: allow horizontal scroll */
-@media (max-width: 900px) {
-    .dashboard-container table {
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
-    }
-}
-
 /* =========================
    JC MECHANICAL DASHBOARD
    (scoped with .jc-dash)
 ========================= */
-
-/* page spacing + background harmony with your dark theme */
 .jc-dash {
     background: var(--bg);
     color: var(--ink);
+    font-size: 16px;
+}
+
+/* Force better contrast for dashboard tokens */
+.jc-dash{
+  --ink: rgba(255, 255, 255, 0.94);
+  --muted: rgba(226, 232, 240, 0.86);
+  --muted-2: rgba(226, 232, 240, 0.78);
+  --border: rgba(226, 232, 240, 0.18);
+}
+
+/* Make Bootstrap muted text readable on dark */
+.jc-dash .text-muted,
+.jc-dash small,
+.jc-dash .small{
+  color: var(--muted) !important;
+  opacity: 1 !important;
 }
 
 /* logo spacing */
@@ -1368,43 +1304,143 @@ footer {
     height: auto;
 }
 
-/* KPI wrapper */
-.jc-dash .kpi-wrap {
-    display: flex;
-    justify-content: center;
-    margin: 8px 0 18px;
+/* Top KPI grid (Revenue + FTC) */
+.jc-dash .jc-dash-grid{
+    max-width: 1100px;
+    margin: 0 auto 18px;
     padding: 0 16px;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
 }
 
-/* KPI card = dark glass card */
-.jc-dash .kpi-card {
+@media (min-width: 992px){
+    .jc-dash .jc-dash-grid{
+        grid-template-columns: 1fr 1fr;
+        align-items: stretch;
+    }
+    .jc-dash .jc-card-wide{
+        grid-column: 1 / -1;
+    }
+}
+
+/* Unified card look */
+.jc-dash .jc-card{
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px;
-    width: 100%;
-    max-width: 560px;
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
 }
 
-/* tiny header text above KPI title */
-.jc-dash .jc-kpi-kicker {
-    font-size: 0.85rem;
-    opacity: 0.9;
+/* Card header / typography */
+.jc-dash .jc-card-head{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 10px;
 }
 
-/* KPI title */
-.jc-dash .jc-kpi-title {
-    font-size: 1.1rem;
-    font-weight: 800;
+.jc-dash .jc-kicker{
+    font-size: 0.88rem;
+    letter-spacing: 0.2px;
+    color: var(--muted-2);
+    font-weight: 700;
+}
+
+.jc-dash .jc-title{
+    font-size: 1.12rem;
+    font-weight: 900;
+    color: var(--ink);
+    margin: 4px 0 0;
+    letter-spacing: 0.2px;
+}
+
+.jc-dash .jc-big-money{
+    margin-top: 8px;
+    font-size: 2.35rem;
+    font-weight: 950;
+    letter-spacing: 0.2px;
+    color: rgba(255, 255, 255, 0.98);
+}
+
+.jc-dash .jc-subtext{
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+/* Revenue table wrapper */
+.jc-dash .jc-table-wrap{
+    margin-top: 10px;
+    border: 1px solid rgba(226, 232, 240, 0.14);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.12);
+}
+
+/* Make Bootstrap table actually work on dark */
+.jc-dash .jc-table-rev{
     margin: 0;
     color: var(--ink);
 }
 
-/* big percentage */
+.jc-dash .jc-table-rev thead th{
+    background: linear-gradient(
+        135deg,
+        rgba(20, 184, 166, 0.18),
+        rgba(42, 167, 224, 0.14)
+    ) !important;
+    color: rgba(255,255,255,0.98) !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-weight: 900;
+    font-size: 0.92rem;
+    padding: 12px 12px;
+    white-space: nowrap;
+}
+
+.jc-dash .jc-table-rev td,
+.jc-dash .jc-table-rev th{
+    border-color: rgba(226, 232, 240, 0.12) !important;
+    vertical-align: middle;
+    font-size: 0.95rem;
+    padding: 11px 12px;
+}
+
+/* Kill Bootstrap's bright striping */
+.jc-dash .jc-table-rev.table-striped > tbody > tr:nth-of-type(odd) > *{
+    --bs-table-accent-bg: rgba(255, 255, 255, 0.03);
+    color: var(--ink) !important;
+}
+
+.jc-dash .jc-table-rev tbody tr:hover > *{
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.jc-dash .jc-cell-main{
+    color: rgba(255,255,255,0.94) !important;
+    font-weight: 700;
+}
+
+.jc-dash .jc-cell-money{
+    color: rgba(255,255,255,0.98) !important;
+    font-weight: 900;
+    letter-spacing: 0.1px;
+}
+
+.jc-dash .jc-empty{
+    color: var(--muted) !important;
+    text-align: center;
+    font-style: italic;
+    padding: 16px 12px;
+}
+
+/* FTC specifics (kept from your original, with a tiny readability bump) */
 .jc-dash .ftc-percentage {
     font-size: 2.25rem;
-    font-weight: 900;
+    font-weight: 950;
     line-height: 1.05;
     margin-top: 8px;
     letter-spacing: 0.3px;
@@ -1412,20 +1448,19 @@ footer {
 }
 
 .jc-dash .ftc-sub {
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     color: var(--muted);
     margin-top: 6px;
 }
 
-/* refresh label/value */
 .jc-dash .jc-refresh-label {
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     color: var(--muted-2);
 }
 
 .jc-dash .jc-refresh-value {
-    font-size: 0.85rem;
-    font-weight: 800;
+    font-size: 0.92rem;
+    font-weight: 900;
     color: var(--ink);
 }
 
@@ -1455,13 +1490,13 @@ footer {
 }
 
 .jc-dash .mini-metric .label {
-    font-size: 0.78rem;
+    font-size: 0.84rem;
     color: var(--muted-2);
 }
 
 .jc-dash .mini-metric .value {
-    font-size: 1.1rem;
-    font-weight: 900;
+    font-size: 1.15rem;
+    font-weight: 950;
     margin-top: 4px;
     color: var(--ink);
 }
@@ -1485,9 +1520,10 @@ footer {
 }
 
 .jc-dash .jc-section-note {
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     margin-bottom: 10px;
-    color: var(--muted);
+    color: var(--muted) !important;
+    opacity: 1 !important;
 }
 
 /* BOOTSTRAP TABLE OVERRIDES (make headers readable on dark) */
@@ -1502,7 +1538,6 @@ footer {
   font-style: italic;
   padding: 18px 12px;
 }
-
 
 .jc-dash .table thead th {
     background: linear-gradient(
@@ -1521,7 +1556,7 @@ footer {
 .jc-dash .table th {
     border-color: var(--border) !important;
     vertical-align: middle;
-    font-size: 0.92rem;
+    font-size: 0.95rem;
 }
 
 /* striped rows: subtle on dark */
@@ -1542,46 +1577,22 @@ footer {
     padding: 0 16px;
 }
 
-/* mobile */
-@media (max-width: 480px) {
-    .jc-dash .mini-metrics {
-        grid-template-columns: 1fr;
-    }
-}
-.jc-dash{
-  --ink: rgba(255, 255, 255, 0.94);
-  --muted: rgba(226, 232, 240, 0.84);
-  --muted-2: rgba(226, 232, 240, 0.74);
-  --border: rgba(226, 232, 240, 0.16);
-}
-
-.jc-dash .text-muted,
-.jc-dash small,
-.jc-dash .small{
-  color: var(--muted) !important;
-  opacity: 1 !important;
-}
-
-.jc-dash .jc-section-note{
-  color: var(--muted) !important;
-  opacity: 1 !important;
-}
-
 .jc-dash .jc-last-refresh,
 .jc-dash .jc-last-refresh *{
   color: var(--muted-2) !important;
   opacity: 1 !important;
 }
 
-.jc-dash .jc-kpi-kicker{
-  color: var(--muted-2) !important;
-  opacity: 1 !important;
+/* mobile */
+@media (max-width: 480px) {
+    .jc-dash .mini-metrics {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* =========================
    reCAPTCHA – dark theme fit
 ========================= */
-
 .g-recaptcha {
     margin-top: 10px;
     margin-bottom: 6px;
