@@ -34,10 +34,14 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
             updated_at TEXT,
             completed_at TEXT,
             customer_id TEXT,
-            num_appointments INTEGER
+            num_appointments INTEGER,
+            tags TEXT
         )
     """)
-
+    try:
+        conn.execute("ALTER TABLE JOBS ADD COLUMN tags TEXT")
+    except Exception:
+        pass
     # customers
     conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (

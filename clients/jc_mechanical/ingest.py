@@ -164,23 +164,31 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection) -> None:
     # Keep schema simple and stable. You can tighten types later.
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS jobs (
-            job_id TEXT,
-            invoice_number TEXT,
-            description TEXT,
-            work_status TEXT,
-            total_amount DOUBLE,
-            outstanding_balance DOUBLE,
-            company_name TEXT,
-            company_id TEXT,
-            created_at TEXT,
-            updated_at TEXT,
-            completed_at TEXT,
-            customer_id TEXT,
-            num_appointments INTEGER
-        )
+            CREATE TABLE IF NOT EXISTS jobs (
+        job_id TEXT,
+        invoice_number TEXT,
+        description TEXT,
+        work_status TEXT,
+        total_amount DOUBLE,
+        outstanding_balance DOUBLE,
+        company_name TEXT,
+        company_id TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        completed_at TEXT,
+        customer_id TEXT,
+        num_appointments INTEGER,
+        tags TEXT
+    )
         """
     )
+    # Backward-compatible schema upgrade (adds missing columns)
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN tags TEXT")
+    except Exception:
+        pass
+
+    
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS customers (
@@ -399,6 +407,7 @@ def flatten_jobs(jobs):
                 "completed_at": (job.get("work_timestamps") or {}).get("completed_at"),
                 "customer_id": str((job.get("customer") or {}).get("id")) if job.get("customer") else None,
                 "num_appointments": 0,
+                "tags": ",".join(job.get("tags", [])) if job.get("tags") else None,
             }
         )
     return pd.DataFrame(rows)
@@ -484,13 +493,15 @@ def upsert_jobs(conn: duckdb.DuckDBPyConnection, df_jobs: pd.DataFrame):
             updated_at = s.updated_at,
             completed_at = s.completed_at,
             customer_id = s.customer_id,
-            num_appointments = s.num_appointments
+            num_appointments = s.num_appointments,
+            tags = s.tags
+
         WHEN NOT MATCHED THEN INSERT (
             job_id, invoice_number, description, work_status, total_amount, outstanding_balance,
-            company_name, company_id, created_at, updated_at, completed_at, customer_id, num_appointments
+            company_name, company_id, created_at, updated_at, completed_at, customer_id, num_appointments, tags
         ) VALUES (
             s.job_id, s.invoice_number, s.description, s.work_status, s.total_amount, s.outstanding_balance,
-            s.company_name, s.company_id, s.created_at, s.updated_at, s.completed_at, s.customer_id, s.num_appointments
+            s.company_name, s.company_id, s.created_at, s.updated_at, s.completed_at, s.customer_id, s.num_appointments, s.tags
         )
         """
     )
