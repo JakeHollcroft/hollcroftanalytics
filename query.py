@@ -20,7 +20,7 @@ print(
         SELECT *
         FROM jobs
         ORDER BY updated_at DESC
-        LIMIT 30
+        LIMIT 60
     """).df()
 )
 
