@@ -29,4 +29,11 @@ print(
         FROM jobs
     """).df()
 )
+
+print("\n=== Distinct Invoice Statuses and Counts ===")
+print(
+    conn.execute("""
+        SELECT status, COUNT(*), sum(amount) from invoices group by status order by 2 desc;
+    """).df()
+)
 conn.close()
