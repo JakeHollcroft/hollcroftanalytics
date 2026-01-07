@@ -12,10 +12,10 @@ print(conn.execute("DESCRIBE jobs").df())
 print("\n=== SAMPLE JOBS ===")
 print(
     conn.execute("""
-        SELECT job_id, work_status, tags, total_amount, updated_at
+        SELECT *
         FROM jobs
         ORDER BY updated_at DESC
-        LIMIT 10
+        LIMIT 30
     """).df()
 )
 
