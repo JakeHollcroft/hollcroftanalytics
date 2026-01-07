@@ -10,6 +10,9 @@ PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 
+# -----------------------------
+# Tables / schema
+# -----------------------------
 def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     # metadata
     conn.execute("""
@@ -38,10 +41,12 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
             tags TEXT
         )
     """)
+    # Backward-compatible schema upgrade
     try:
-        conn.execute("ALTER TABLE JOBS ADD COLUMN tags TEXT")
+        conn.execute("ALTER TABLE jobs ADD COLUMN tags TEXT")
     except Exception:
         pass
+
     # customers
     conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (
@@ -85,6 +90,9 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
 def _safe_df(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     try:
         return conn.execute(sql).df()
@@ -105,6 +113,81 @@ def _ensure_columns(df: pd.DataFrame, cols_with_dtypes: dict) -> pd.DataFrame:
     return df
 
 
+def _normalize_tags(tags_val) -> str:
+    """
+    Normalize tags into a single lowercased string with comma delimiters.
+    Example: "Residential Service, Callback" -> "residential service,callback"
+    """
+    if tags_val is None or (isinstance(tags_val, float) and pd.isna(tags_val)):
+        return ""
+    s = str(tags_val)
+    parts = [p.strip().lower() for p in s.split(",") if p.strip()]
+    return ",".join(parts)
+
+
+def _tag_has(tags_norm: str, needle: str) -> bool:
+    """
+    Check membership on normalized comma-delimited tags.
+    """
+    if not tags_norm:
+        return False
+    needle = needle.strip().lower()
+    parts = tags_norm.split(",")
+    return needle in parts
+
+
+def _map_category_from_tags(tags_norm: str) -> str:
+    """
+    Map a job's tags to ONE revenue category bucket.
+    Priority: install/change-out > maintenance > service.
+    """
+    is_res = _tag_has(tags_norm, "residential")
+    is_com = _tag_has(tags_norm, "commercial")
+
+    is_install = _tag_has(tags_norm, "install") or _tag_has(tags_norm, "installation") or _tag_has(tags_norm, "change out") or _tag_has(tags_norm, "change-out")
+    is_maint = _tag_has(tags_norm, "maintenance")
+    is_service = _tag_has(tags_norm, "service") or _tag_has(tags_norm, "demand service") or _tag_has(tags_norm, "demand")
+
+    s = tags_norm
+    if "residential install" in s or "residential change out" in s or "residential change-out" in s:
+        is_res, is_install = True, True
+    if "commercial install" in s or "commercial change out" in s or "commercial change-out" in s:
+        is_com, is_install = True, True
+    if "residential maintenance" in s:
+        is_res, is_maint = True, True
+    if "commercial maintenance" in s:
+        is_com, is_maint = True, True
+    if "residential service" in s or "residential demand service" in s:
+        is_res, is_service = True, True
+    if "commercial service" in s or "commercial demand service" in s:
+        is_com, is_service = True, True
+
+    if is_install and is_res:
+        return "Residential change out"
+    if is_install and is_com:
+        return "Commercial change out"
+    if is_maint and is_res:
+        return "Residential maintenance"
+    if is_maint and is_com:
+        return "Commercial maintenance"
+    if is_service and is_res:
+        return "Residential demand service"
+    if is_service and is_com:
+        return "Commercial demand service"
+
+    return "Other / Unclassified"
+
+
+def _format_currency(x: float) -> str:
+    try:
+        return "${:,.0f}".format(float(x))
+    except Exception:
+        return "$0"
+
+
+# -----------------------------
+# KPI builder
+# -----------------------------
 def get_dashboard_kpis():
     conn = duckdb.connect(DB_FILE)
     try:
@@ -132,6 +215,7 @@ def get_dashboard_kpis():
                 "completed_at": "object",
                 "customer_id": "object",
                 "num_appointments": "int64",
+                "tags": "object",
             },
         )
 
@@ -153,6 +237,7 @@ def get_dashboard_kpis():
                 "status": "object",
                 "amount": "float64",
                 "due_amount": "float64",
+                "paid_at": "object",
             },
         )
 
@@ -181,7 +266,7 @@ def get_dashboard_kpis():
         # -----------------------------------
         # Data cleanup
         # -----------------------------------
-        # Housecall often returns cents; keep your existing /100 scaling
+        # Housecall often returns cents; keep /100 scaling
         df_jobs["total_amount"] = (
             pd.to_numeric(df_jobs.get("total_amount", 0), errors="coerce").fillna(0) / 100
         )
@@ -196,6 +281,9 @@ def get_dashboard_kpis():
 
         df_jobs["completed_at"] = pd.to_datetime(df_jobs.get("completed_at"), errors="coerce", utc=True)
 
+        # Normalize job tags for category mapping
+        df_jobs["tags_norm"] = df_jobs.get("tags", "").apply(_normalize_tags)
+
         df_invoices["amount"] = (
             pd.to_numeric(df_invoices.get("amount", 0), errors="coerce").fillna(0) / 100
         )
@@ -203,6 +291,9 @@ def get_dashboard_kpis():
         df_invoices["due_amount"] = (
             pd.to_numeric(df_invoices.get("due_amount", 0), errors="coerce").fillna(0) / 100
         )
+
+        # Parse paid_at for YTD filter (used for paid)
+        df_invoices["paid_at_dt"] = pd.to_datetime(df_invoices.get("paid_at"), errors="coerce", utc=True)
 
         # -----------------------------------
         # Joins
@@ -219,7 +310,12 @@ def get_dashboard_kpis():
                 df_invoices["customer_id"] = pd.Series(dtype="object")
 
         # jobs -> customer name
-        if not df_jobs.empty and not df_customers.empty and "customer_id" in df_jobs.columns and "customer_id" in df_customers.columns:
+        if (
+            not df_jobs.empty
+            and not df_customers.empty
+            and "customer_id" in df_jobs.columns
+            and "customer_id" in df_customers.columns
+        ):
             df_jobs = df_jobs.merge(
                 df_customers[["customer_id", "first_name", "last_name"]],
                 how="left",
@@ -237,15 +333,85 @@ def get_dashboard_kpis():
         ).str.strip()
 
         # -----------------------------------
-        # Job subsets: completed jobs THIS YEAR and forward
+        # Time windows (YTD)
         # -----------------------------------
-        completed_statuses = ["complete unrated", "complete rated"]
-        df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()
-
         central = ZoneInfo("America/Chicago")
         now_central = datetime.now(central)
         start_of_year_central = datetime(now_central.year, 1, 1, tzinfo=central)
         start_of_year_utc = start_of_year_central.astimezone(ZoneInfo("UTC"))
+
+        # -----------------------------------
+        # Revenue KPI (YTD)
+        # paid + open + pending_payment
+        # -----------------------------------
+        revenue_statuses = {"paid", "open", "pending_payment"}
+        df_rev = df_invoices[df_invoices["status"].astype(str).str.lower().isin(revenue_statuses)].copy()
+
+        # YTD filter logic:
+        # - paid: use paid_at when available; if missing, fall back to service_date/invoice_date
+        # - open/pending_payment: use service_date or invoice_date (since paid_at is usually null)
+        df_rev["service_date_dt"] = pd.to_datetime(df_rev.get("service_date"), errors="coerce", utc=True)
+        df_rev["invoice_date_dt"] = pd.to_datetime(df_rev.get("invoice_date"), errors="coerce", utc=True)
+
+        def _row_effective_dt(row):
+            st = str(row.get("status") or "").lower()
+            if st == "paid":
+                if pd.notna(row.get("paid_at_dt")):
+                    return row.get("paid_at_dt")
+            # fallbacks
+            if pd.notna(row.get("service_date_dt")):
+                return row.get("service_date_dt")
+            if pd.notna(row.get("invoice_date_dt")):
+                return row.get("invoice_date_dt")
+            return pd.NaT
+
+        if not df_rev.empty:
+            df_rev["effective_dt"] = df_rev.apply(_row_effective_dt, axis=1)
+            df_rev = df_rev[df_rev["effective_dt"] >= start_of_year_utc].copy()
+        else:
+            df_rev["effective_dt"] = pd.NaT
+
+        # Join tags onto invoices for category breakdown
+        if not df_rev.empty and not df_jobs.empty and "job_id" in df_jobs.columns:
+            df_rev = df_rev.merge(
+                df_jobs[["job_id", "tags_norm"]],
+                how="left",
+                on="job_id",
+            )
+        else:
+            if "tags_norm" not in df_rev.columns:
+                df_rev["tags_norm"] = ""
+
+        df_rev["category"] = df_rev["tags_norm"].fillna("").apply(_map_category_from_tags)
+
+        total_revenue_ytd = float(df_rev["amount"].sum()) if not df_rev.empty else 0.0
+
+        breakdown = (
+            df_rev.groupby("category", dropna=False)["amount"]
+            .sum()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={"amount": "revenue"})
+        )
+
+        revenue_breakdown = []
+        if not breakdown.empty:
+            for _, row in breakdown.iterrows():
+                revenue_breakdown.append(
+                    {
+                        "category": str(row["category"]),
+                        "revenue": float(row["revenue"]),
+                        "revenue_display": _format_currency(row["revenue"]),
+                    }
+                )
+
+        total_revenue_display = _format_currency(total_revenue_ytd)
+
+        # -----------------------------------
+        # Job subsets: completed jobs THIS YEAR and forward
+        # -----------------------------------
+        completed_statuses = ["complete unrated", "complete rated"]
+        df_completed = df_jobs[df_jobs["work_status"].isin(completed_statuses)].copy()
 
         # completed_at is UTC-aware datetime because we parsed with utc=True
         df_completed = df_completed[df_completed["completed_at"] >= start_of_year_utc].copy()
@@ -306,6 +472,7 @@ def get_dashboard_kpis():
         refresh_status = get_refresh_status()
 
         return {
+            # Existing KPI
             "first_time_completion_pct": first_time_completion_pct,
             "first_time_completion_target": first_time_completion_target,
             "first_time_completed": first_time_completed,
@@ -313,6 +480,13 @@ def get_dashboard_kpis():
             "completed_jobs": completed_jobs,
             "repeat_visit_pct": repeat_visit_pct,
             "repeat_jobs": repeat_jobs_table.to_dict(orient="records"),
+
+            # New KPI (YTD)
+            "total_revenue_ytd": total_revenue_ytd,
+            "total_revenue_ytd_display": total_revenue_display,
+            "revenue_breakdown_ytd": revenue_breakdown,
+
+            # Meta
             "last_refresh": last_refresh_display,
             **refresh_status,
         }

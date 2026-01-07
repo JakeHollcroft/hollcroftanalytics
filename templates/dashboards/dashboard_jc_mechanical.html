@@ -253,6 +253,71 @@
         }
 
         .phase-wide { grid-column: 1 / -1; }
+
+        /* ----------------------------
+           NEW: Revenue section styles
+           ---------------------------- */
+        .kpi-split {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+        @media (min-width: 992px) {
+            .kpi-split { grid-template-columns: 0.9fr 1.1fr; }
+        }
+
+        .rev-card {
+            border: 1px solid rgba(226, 232, 240, 0.14);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 18px;
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+        }
+        .rev-kicker {
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 0.85rem;
+            letter-spacing: 0.2px;
+        }
+        .rev-title {
+            margin: 6px 0 0;
+            font-size: 1.15rem;
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.92);
+        }
+        .rev-big {
+            margin-top: 10px;
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 0.3px;
+            color: rgba(255, 255, 255, 0.96);
+        }
+        .rev-sub {
+            margin-top: 6px;
+            color: rgba(226, 232, 240, 0.75);
+            font-size: 0.95rem;
+        }
+
+        .rev-table-wrap {
+            border: 1px solid rgba(226, 232, 240, 0.14);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 14px;
+        }
+        .rev-table-title {
+            margin: 0 0 10px;
+            font-weight: 900;
+            font-size: 1.05rem;
+            color: rgba(255, 255, 255, 0.92);
+        }
+        .rev-table-note {
+            margin: -2px 0 12px;
+            color: rgba(226, 232, 240, 0.72);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+        .rev-table .muted {
+            color: rgba(226, 232, 240, 0.72);
+        }
     </style>
 </head>
 
@@ -292,6 +357,68 @@
     else 'bg-warning' if first_time_completion_pct >= 75
     else 'bg-danger'
 %}
+
+<!-- -----------------------------------
+     NEW: TOTAL REVENUE (YTD) + BREAKDOWN
+     -----------------------------------
+     Requires kpis.py to provide:
+       - total_revenue_ytd_display
+       - revenue_breakdown_ytd (list of {category, revenue_display, revenue})
+-->
+<section class="kpi-wrap" aria-label="Revenue KPIs">
+    <div class="kpi-split">
+
+        <!-- Total revenue card -->
+        <article class="rev-card" aria-labelledby="rev-total-title">
+            <div class="rev-kicker">Revenue KPI</div>
+            <h2 id="rev-total-title" class="rev-title">Total Revenue (YTD)</h2>
+
+            <div class="rev-big">
+                {{ total_revenue_ytd_display }}
+            </div>
+
+            <div class="rev-sub">
+                Includes invoice statuses: paid, open, pending_payment
+            </div>
+        </article>
+
+        <!-- Breakdown table -->
+        <article class="rev-table-wrap" aria-labelledby="rev-breakdown-title">
+            <h3 id="rev-breakdown-title" class="rev-table-title">Revenue by Category (YTD)</h3>
+            <div class="rev-table-note">
+                Categories are derived from job tags. Unclassified items fall under “Other / Unclassified”.
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle rev-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Category</th>
+                            <th scope="col" class="text-end">Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
+                            {% for r in revenue_breakdown_ytd %}
+                                <tr>
+                                    <td>{{ r.category }}</td>
+                                    <td class="text-end">{{ r.revenue_display }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="2" class="muted">
+                                    No revenue rows found for YTD with statuses paid, open, pending_payment.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+    </div>
+</section>
 
 <!-- KPI CARD -->
 <div class="kpi-wrap">
@@ -412,12 +539,6 @@
                  aria-valuemax="100">
             </div>
         </div>
-
-        <!--
-          OPTIONAL: If you want a manual override instead of data-done flags:
-            - Set data-manual-pct="35" on #roadmap-progress-bar
-            - And delete the JS that calculates done/total
-        -->
     </div>
 
     <div class="roadmap-grid">
@@ -440,7 +561,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff easy">Difficulty: Very easy</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-inprogress">In Progress</span>
                     </div>
                 </li>
@@ -452,7 +572,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff easy">Difficulty: Easy</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -464,7 +583,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff med">Difficulty: Easy–medium</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -476,7 +594,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff med">Difficulty: Medium</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -501,7 +618,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff med">Difficulty: Medium</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -513,7 +629,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff hard">Difficulty: Medium–hard</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -525,7 +640,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff med">Difficulty: Medium</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -537,7 +651,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff hard">Difficulty: Hard</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -559,11 +672,10 @@
                 <li class="task-row" data-done="0">
                     <div class="task-left">
                         <div class="task-name">Service efficiency (billed hours vs paid hours)</div>
-                        <div class="task-note">o	Billed hours vs paid hours</div>
+                        <div class="task-note">o    Billed hours vs paid hours</div>
                     </div>
                     <div class="task-right">
                         <span class="diff hard">Difficulty: Hard</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -578,7 +690,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff hard">Difficulty: Very hard</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
@@ -590,7 +701,6 @@
                     </div>
                     <div class="task-right">
                         <span class="diff med">Difficulty: Medium</span>
-                        <!-- UPDATE THIS STATUS WHEN YOU WORK ON IT -->
                         <span class="status-pill status-notstarted">Not started</span>
                     </div>
                 </li>
