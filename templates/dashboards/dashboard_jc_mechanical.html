@@ -47,26 +47,6 @@
     else 'bg-danger'
 %}
 
-<!-- QUICK STATS BAR -->
-<section class="jc-quick-stats" aria-label="Quick Stats">
-    <div class="jc-stat">
-        <span class="jc-stat-label">YTD Revenue</span>
-        <span class="jc-stat-value">{{ total_revenue_ytd_display }}</span>
-    </div>
-    <div class="jc-stat">
-        <span class="jc-stat-label">FTC Rate</span>
-        <span class="jc-stat-value {% if first_time_completion_pct >= first_time_completion_target %}jc-stat-success{% elif first_time_completion_pct >= 75 %}jc-stat-warning{% else %}jc-stat-danger{% endif %}">{{ first_time_completion_pct }}%</span>
-    </div>
-    <div class="jc-stat">
-        <span class="jc-stat-label">Completed Jobs</span>
-        <span class="jc-stat-value">{{ completed_jobs }}</span>
-    </div>
-    <div class="jc-stat">
-        <span class="jc-stat-label">Repeat Visits</span>
-        <span class="jc-stat-value {% if repeat_visit_completed > 20 %}jc-stat-warning{% endif %}">{{ repeat_visit_completed }}</span>
-    </div>
-</section>
-
 <!-- TOP DASHBOARD GRID -->
 <section class="jc-dash-grid" aria-label="Top KPIs">
 
@@ -74,41 +54,13 @@
     <article class="jc-card jc-card-rev" aria-labelledby="rev-total-title">
         <div class="jc-card-head">
             <div>
-                <div class="jc-kicker">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="1" x2="12" y2="23"></line>
-                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                    </svg>
-                    Revenue KPI
-                </div>
+                <div class="jc-kicker">Revenue KPI</div>
                 <h2 id="rev-total-title" class="jc-title">Total Revenue (YTD)</h2>
-            </div>
-            <div class="jc-card-actions">
-                <button class="jc-btn-icon" title="Download CSV">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                </button>
-                <button class="jc-btn-icon" title="Refresh">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="23 4 23 10 17 10"></polyline>
-                        <polyline points="1 20 1 14 7 14"></polyline>
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                    </svg>
-                </button>
             </div>
         </div>
 
         <div class="jc-big-money">
             {{ total_revenue_ytd_display }}
-            <span class="jc-trend-indicator jc-trend-up">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                    <polyline points="18 15 12 9 6 15"></polyline>
-                </svg>
-                12%
-            </span>
         </div>
 
         <div class="jc-subtext">
@@ -120,15 +72,7 @@
     <article class="jc-card jc-card-rev" aria-labelledby="rev-breakdown-title">
         <div class="jc-card-head">
             <div>
-                <div class="jc-kicker">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    Revenue breakdown
-                </div>
+                <div class="jc-kicker">Revenue breakdown</div>
                 <h2 id="rev-breakdown-title" class="jc-title">Revenue by Category (YTD)</h2>
             </div>
         </div>
@@ -167,15 +111,9 @@
 
     <!-- FTC (spans full width on large screens) -->
     <article class="jc-card jc-card-wide" aria-labelledby="kpi-ftc-title">
-        <div class="d-flex justify-content-between align-items-start flex-wrap">
+        <div class="d-flex justify-content-between align-items-start">
             <div>
-                <div class="jc-kicker">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 11 12 14 22 4"></polyline>
-                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                    </svg>
-                    Quality KPI
-                </div>
+                <div class="jc-kicker">Quality KPI</div>
 
                 <h2 id="kpi-ftc-title" class="jc-title">
                     First-Time Completion
@@ -456,7 +394,7 @@
     </p>
 
     <div class="table-responsive">
-        <table class="table table-sm table-striped align-middle jc-table-repeat">
+        <table class="table table-sm table-striped align-middle">
             <thead>
                 <tr>
                     <th scope="col">Completed</th>
