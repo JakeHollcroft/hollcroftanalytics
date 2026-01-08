@@ -2,256 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-
     <title>Client Dashboard | Hollcroft Analytics | Tulsa, OK</title>
-
-    <meta name="description"
-          content="Secure client dashboard by Hollcroft Analytics in Tulsa, OK. Dashboards, reporting, and business intelligence.">
-
+    <meta name="description" content="Secure client dashboard by Hollcroft Analytics in Tulsa, OK. Dashboards, reporting, and business intelligence.">
     <meta name="robots" content="noindex, nofollow">
-
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
+    
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
+    
     <!-- Main site styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
+    
     <!-- Social preview -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="Client Dashboard | Hollcroft Analytics">
     <meta property="og:description" content="Secure client dashboard by Hollcroft Analytics">
     <meta property="og:image" content="{{ url_for('static', filename='logo.png', _external=True) }}">
-
-    <!-- Roadmap section styles (scoped so it won’t break the rest of your theme) -->
-    <style>
-        .roadmap {
-            position: relative;
-            overflow: hidden;
-        }
-        .roadmap::after {
-            content: "";
-            position: absolute;
-            inset: -180px -160px auto auto;
-            width: 520px;
-            height: 520px;
-            background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.14), rgba(42, 167, 224, 0.0) 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        .roadmap > * { position: relative; z-index: 1; }
-
-        .roadmap-top {
-            display: flex;
-            gap: 12px;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-        }
-        .roadmap-kicker {
-            font-size: 0.85rem;
-            color: rgba(226, 232, 240, 0.72);
-            letter-spacing: 0.2px;
-        }
-        .roadmap-title {
-            margin: 4px 0 0;
-            font-size: 1.15rem;
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.92);
-        }
-        .roadmap-sub {
-            margin-top: 6px;
-            color: rgba(226, 232, 240, 0.80);
-            line-height: 1.55;
-            max-width: 920px;
-        }
-
-        .roadmap-badges {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: flex-end;
-        }
-        .roadmap-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 10px;
-            border-radius: 999px;
-            border: 1px solid rgba(226, 232, 240, 0.18);
-            background: rgba(255, 255, 255, 0.06);
-            color: rgba(255, 255, 255, 0.88);
-            font-size: 0.9rem;
-            white-space: nowrap;
-        }
-
-        .roadmap-divider {
-            height: 1px;
-            background: rgba(226, 232, 240, 0.12);
-            margin: 14px 0;
-        }
-
-        .roadmap-progress {
-            margin-top: 2px;
-        }
-        .roadmap-progress-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-        }
-        .roadmap-progress-label {
-            color: rgba(226, 232, 240, 0.78);
-            font-size: 0.92rem;
-        }
-        .roadmap-progress-meta {
-            color: rgba(226, 232, 240, 0.70);
-            font-size: 0.92rem;
-            white-space: nowrap;
-        }
-
-        .roadmap-grid {
-            margin-top: 14px;
-            display: grid;
-            grid-template-columns: 1.2fr 1fr;
-            gap: 12px;
-        }
-        @media (max-width: 992px) {
-            .roadmap-grid { grid-template-columns: 1fr; }
-        }
-
-        .phase-card {
-            border: 1px solid rgba(226, 232, 240, 0.14);
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.04);
-            padding: 14px;
-            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-        }
-
-        .phase-head {
-            display: flex;
-            gap: 10px;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 10px;
-            flex-wrap: wrap;
-        }
-        .phase-title {
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.92);
-            letter-spacing: 0.2px;
-            margin: 0;
-            font-size: 1.05rem;
-        }
-
-        .phase-meta {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-        .meta-chip {
-            font-size: 0.82rem;
-            padding: 5px 9px;
-            border-radius: 999px;
-            border: 1px solid rgba(226, 232, 240, 0.18);
-            background: rgba(255, 255, 255, 0.06);
-            color: rgba(226, 232, 240, 0.88);
-        }
-
-        .phase-list {
-            display: grid;
-            gap: 10px;
-            margin: 0;
-            padding: 0;
-            list-style: none;
-        }
-
-        .task-row {
-            display: flex;
-            gap: 10px;
-            justify-content: space-between;
-            align-items: flex-start;
-            padding: 10px 10px;
-            border-radius: 14px;
-            border: 1px solid rgba(226, 232, 240, 0.12);
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .task-left {
-            display: grid;
-            gap: 4px;
-            min-width: 0;
-        }
-        .task-name {
-            font-weight: 800;
-            color: rgba(255, 255, 255, 0.92);
-            line-height: 1.25;
-        }
-        .task-note {
-            color: rgba(226, 232, 240, 0.72);
-            font-size: 0.9rem;
-            line-height: 1.45;
-        }
-
-        .task-right {
-            display: grid;
-            gap: 6px;
-            justify-items: end;
-            flex: 0 0 auto;
-            min-width: 152px;
-        }
-
-        .diff {
-            display: inline-flex;
-            align-items: center;
-            padding: 5px 9px;
-            border-radius: 999px;
-            font-size: 0.82rem;
-            border: 1px solid rgba(226, 232, 240, 0.16);
-            background: rgba(255, 255, 255, 0.06);
-            color: rgba(255, 255, 255, 0.86);
-            white-space: nowrap;
-        }
-        .diff.easy { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.10); }
-        .diff.med  { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); }
-        .diff.hard { border-color: rgba(239, 68, 68, 0.35);  background: rgba(239, 68, 68, 0.10); }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 0.82rem;
-            border: 1px solid rgba(226, 232, 240, 0.16);
-            background: rgba(255, 255, 255, 0.06);
-            color: rgba(226, 232, 240, 0.88);
-            white-space: nowrap;
-        }
-        .status-notstarted { border-color: rgba(148, 163, 184, 0.30); background: rgba(148, 163, 184, 0.10); }
-        .status-inprogress { border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.12); color: rgba(255, 255, 255, 0.90); }
-        .status-blocked    { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: rgba(255, 255, 255, 0.90); }
-        .status-done       { border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.12); color: rgba(255, 255, 255, 0.92); }
-
-        .task-row.is-done {
-            border-color: rgba(34, 197, 94, 0.28);
-            background: rgba(34, 197, 94, 0.06);
-        }
-
-        .roadmap-note {
-            margin-top: 12px;
-            color: rgba(226, 232, 240, 0.72);
-            font-size: 0.9rem;
-            line-height: 1.55;
-        }
-
-        .phase-wide { grid-column: 1 / -1; }
-    </style>
 </head>
 
 <body class="jc-dash">
@@ -275,411 +41,426 @@
 </header>
 
 <!-- LOGO -->
-<div class="text-center mb-4">
-    <img
-        src="{{ url_for('static', filename='logo.png') }}"
-        alt="Hollcroft Analytics logo — Tulsa, Oklahoma data analytics"
-        class="dashboard-logo"
-        loading="lazy">
+<div class="jc-logo-container">
+    <img src="{{ url_for('static', filename='logo.png') }}" 
+         alt="Hollcroft Analytics logo – Tulsa, Oklahoma data analytics" 
+         class="dashboard-logo"
+         loading="lazy">
 </div>
 
 <main id="main-content" role="main">
 
-{% set ftc_bar_class =
-    'bg-success' if first_time_completion_pct >= first_time_completion_target
-    else 'bg-warning' if first_time_completion_pct >= 75
-    else 'bg-danger'
-%}
+{% set ftc_bar_class = 'bg-success' if first_time_completion_pct >= first_time_completion_target else 'bg-warning' if first_time_completion_pct >= 75 else 'bg-danger' %}
 
-<!--
-  NEW: top dashboard grid
-  - Revenue cards flow cleanly with FTC card
--->
-<section class="jc-dash-grid" aria-label="Top KPIs">
+<!-- TOP KPI GRID -->
+<section class="jc-kpi-grid" aria-label="Top KPIs">
 
-    <!-- Revenue: Total -->
-    <article class="jc-card jc-card-rev" aria-labelledby="rev-total-title">
-        <div class="jc-card-head">
-            <div>
-                <div class="jc-kicker">Revenue KPI</div>
-                <h2 id="rev-total-title" class="jc-title">Total Revenue (YTD)</h2>
+    <!-- REVENUE TOTAL CARD -->
+    <article class="jc-kpi-card jc-kpi-revenue" aria-labelledby="rev-total-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+            </div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">Total Revenue (YTD)</div>
+                <div class="jc-kpi-badge">Revenue KPI</div>
             </div>
         </div>
-
-        <div class="jc-big-money">
+        
+        <div class="jc-kpi-value">
             {{ total_revenue_ytd_display }}
         </div>
-
-        <div class="jc-subtext">
-            Includes invoice statuses: paid, open, pending_payment
+        
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Includes: paid, open, pending_payment</span>
         </div>
     </article>
 
-    <!-- Revenue: Breakdown -->
-    <article class="jc-card jc-card-rev" aria-labelledby="rev-breakdown-title">
-        <div class="jc-card-head">
-            <div>
-                <div class="jc-kicker">Revenue breakdown</div>
-                <h2 id="rev-breakdown-title" class="jc-title">Revenue by Category (YTD)</h2>
+    <!-- REVENUE BREAKDOWN CARD -->
+    <article class="jc-kpi-card jc-kpi-breakdown" aria-labelledby="rev-breakdown-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+            </div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">Revenue by Category (YTD)</div>
+                <div class="jc-kpi-badge">Breakdown</div>
             </div>
         </div>
-
-        <div class="jc-subtext" style="margin-top:-4px;">
-            Categories are derived from job tags. Unclassified items fall under “Other / Unclassified”.
+        
+        <div class="jc-revenue-bars">
+            {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
+                {% for r in revenue_breakdown_ytd %}
+                <div class="jc-revenue-bar-row">
+                    <div class="jc-revenue-bar-label">{{ r.category }}</div>
+                    <div class="jc-revenue-bar-track">
+                        <div class="jc-revenue-bar-fill" data-width="{{ (loop.index / revenue_breakdown_ytd|length * 100)|int }}"></div>
+                    </div>
+                    <div class="jc-revenue-bar-value">{{ r.revenue_display }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="jc-empty-state">
+                    <p>No revenue data available</p>
+                </div>
+            {% endif %}
         </div>
-
-        <div class="table-responsive jc-table-wrap">
-            <table class="table table-sm table-striped align-middle jc-table-rev">
-                <thead>
-                    <tr>
-                        <th scope="col">Category</th>
-                        <th scope="col" class="text-end">Revenue</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
-                        {% for r in revenue_breakdown_ytd %}
-                            <tr>
-                                <td class="jc-cell-main">{{ r.category }}</td>
-                                <td class="text-end jc-cell-money">{{ r.revenue_display }}</td>
-                            </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="2" class="jc-empty">
-                                No revenue rows found for YTD with statuses paid, open, pending_payment.
-                            </td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
+        
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Categories from job tags</span>
         </div>
     </article>
 
-    <!-- FTC (spans full width on large screens, after revenue) -->
-    <article class="jc-card jc-card-wide" aria-labelledby="kpi-ftc-title">
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <div class="jc-kicker">Quality KPI</div>
-
-                <h2 id="kpi-ftc-title" class="jc-title">
-                    First-Time Completion
-                </h2>
-
-                <div class="ftc-percentage">
-                    {{ first_time_completion_pct }}%
+    <!-- FIRST-TIME COMPLETION CARD -->
+    <article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
+        <div class="jc-ftc-layout">
+            <div class="jc-ftc-left">
+                <div class="jc-kpi-header">
+                    <div class="jc-kpi-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <div class="jc-kpi-meta">
+                        <div class="jc-kpi-label">First-Time Completion</div>
+                        <div class="jc-kpi-badge">Quality KPI</div>
+                    </div>
                 </div>
-
-                <div class="ftc-sub">
-                    Target: {{ first_time_completion_target }}%
-                    • Completed jobs counted: {{ completed_jobs }}
+                
+                <div class="jc-ftc-gauge">
+                    <svg viewBox="0 0 200 200" class="jc-gauge-svg">
+                        <circle cx="100" cy="100" r="80" class="jc-gauge-bg"></circle>
+                        <circle cx="100" cy="100" r="80" class="jc-gauge-fill" data-percent="{{ first_time_completion_pct }}"></circle>
+                        <text x="100" y="95" class="jc-gauge-value">{{ first_time_completion_pct }}%</text>
+                        <text x="100" y="115" class="jc-gauge-label">Complete</text>
+                    </svg>
                 </div>
-            </div>
-
-            <div class="text-end">
-                <div class="jc-refresh-label">Last refreshed</div>
-                <div class="jc-refresh-value">{{ last_refresh }}</div>
-            </div>
-        </div>
-
-        <div class="mt-3">
-            <div class="progress">
-                <div
-                    id="ftc-progress-bar"
-                    class="progress-bar {{ ftc_bar_class }} progress-bar-striped"
-                    role="progressbar"
-                    data-ftc="{{ first_time_completion_pct }}"
-                    aria-valuenow="{{ first_time_completion_pct }}"
-                    aria-valuemin="0"
-                    aria-valuemax="100">
-                    {{ first_time_completion_pct }}%
+                
+                <div class="jc-ftc-target">
+                    <span class="jc-target-label">Target:</span>
+                    <span class="jc-target-value">{{ first_time_completion_target }}%</span>
                 </div>
             </div>
-        </div>
-
-        <div class="mini-metrics">
-            <div class="mini-metric">
-                <div class="label">First-time (1 appt)</div>
-                <div class="value">{{ first_time_completed }}</div>
-            </div>
-            <div class="mini-metric">
-                <div class="label">Repeat visit (2+)</div>
-                <div class="value">{{ repeat_visit_completed }}</div>
-            </div>
-            <div class="mini-metric">
-                <div class="label">Repeat-visit rate</div>
-                <div class="value">{{ repeat_visit_pct }}%</div>
+            
+            <div class="jc-ftc-right">
+                <div class="jc-ftc-stats">
+                    <div class="jc-stat-card">
+                        <div class="jc-stat-icon">✓</div>
+                        <div class="jc-stat-value">{{ first_time_completed }}</div>
+                        <div class="jc-stat-label">First-time (1 appt)</div>
+                    </div>
+                    
+                    <div class="jc-stat-card">
+                        <div class="jc-stat-icon">↻</div>
+                        <div class="jc-stat-value">{{ repeat_visit_completed }}</div>
+                        <div class="jc-stat-label">Repeat visit (2+)</div>
+                    </div>
+                    
+                    <div class="jc-stat-card">
+                        <div class="jc-stat-icon">%</div>
+                        <div class="jc-stat-value">{{ repeat_visit_pct }}%</div>
+                        <div class="jc-stat-label">Repeat-visit rate</div>
+                    </div>
+                    
+                    <div class="jc-stat-card">
+                        <div class="jc-stat-icon">#</div>
+                        <div class="jc-stat-value">{{ completed_jobs }}</div>
+                        <div class="jc-stat-label">Total completed</div>
+                    </div>
+                </div>
+                
+                <div class="jc-ftc-refresh">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    <span>Last refreshed: {{ last_refresh }}</span>
+                </div>
             </div>
         </div>
     </article>
 
 </section>
 
-<!-- NEW: KPI EXPANSION ROADMAP / PROGRESS (NO CHECKBOXES) -->
-<section class="section-card roadmap" aria-labelledby="roadmap-title">
-
-    <div class="roadmap-top">
-        <div>
-            <div class="roadmap-kicker">Build roadmap</div>
-            <h2 id="roadmap-title" class="roadmap-title">KPI Expansion Progress</h2>
+<!-- ROADMAP SECTION -->
+<section class="jc-roadmap-card" aria-labelledby="roadmap-title">
+    <div class="jc-roadmap-header">
+        <div class="jc-roadmap-title-group">
+            <div class="jc-section-badge">Build Roadmap</div>
+            <h2 id="roadmap-title" class="jc-section-title">KPI Expansion Progress</h2>
         </div>
-
-        <div class="roadmap-badges">
-            <span class="roadmap-pill">Status: In progress</span>
-            <span class="roadmap-pill">Last refreshed: {{ last_refresh }}</span>
-        </div>
-    </div>
-
-    <div class="roadmap-divider"></div>
-
-    <div class="roadmap-progress">
-        <div class="roadmap-progress-top">
-            <div class="roadmap-progress-label">Overall completion</div>
-            <div class="roadmap-progress-meta">
-                <span id="roadmap-done">0</span>/<span id="roadmap-total">0</span> items complete
-                • <span id="roadmap-pct">0</span>%
-            </div>
-        </div>
-
-        <div class="progress" style="height: 14px;">
-            <div id="roadmap-progress-bar"
-                 class="progress-bar bg-info progress-bar-striped"
-                 role="progressbar"
-                 style="width: 0%;"
-                 aria-valuenow="0"
-                 aria-valuemin="0"
-                 aria-valuemax="100">
-            </div>
+        
+        <div class="jc-roadmap-badges">
+            <span class="jc-status-badge status-in-progress">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                In Progress
+            </span>
+            <span class="jc-refresh-badge">{{ last_refresh }}</span>
         </div>
     </div>
 
-    <div class="roadmap-grid">
+    <div class="jc-roadmap-progress">
+        <div class="jc-progress-header">
+            <span class="jc-progress-label">Overall Completion</span>
+            <span class="jc-progress-stats">
+                <span id="roadmap-done">0</span>/<span id="roadmap-total">0</span> items
+                <span class="jc-progress-dot">•</span>
+                <span id="roadmap-pct">0</span>%
+            </span>
+        </div>
+        
+        <div class="jc-progress-bar-container">
+            <div id="roadmap-progress-bar" class="jc-progress-bar-fill"></div>
+        </div>
+    </div>
 
-        <!-- Phase 1 -->
-        <article class="phase-card" aria-label="Phase 1">
-            <div class="phase-head">
-                <h3 class="phase-title">Phase 1 (fast value)</h3>
-                <div class="phase-meta">
-                    <span class="meta-chip">Quick wins</span>
-                    <span class="meta-chip">Lowest complexity</span>
+    <div class="jc-phases-grid">
+        <!-- PHASE 1 -->
+        <article class="jc-phase-card" aria-label="Phase 1">
+            <div class="jc-phase-header">
+                <h3 class="jc-phase-title">Phase 1</h3>
+                <div class="jc-phase-tags">
+                    <span class="jc-tag jc-tag-green">Quick Wins</span>
+                    <span class="jc-tag jc-tag-blue">Low Complexity</span>
                 </div>
             </div>
-
-            <ul class="phase-list">
-                <li class="task-row" data-done="1">
-                    <div class="task-left">
-                        <div class="task-name">Total revenue by department</div>
-                        <div class="task-note">Residential, commercial, maintenance, demand service, change out, plus service plan revenue.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff easy">Difficulty: Very easy</span>
-                        <span class="status-pill status-done">Done</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Average ticket (service only)</div>
-                        <div class="task-note">Overall and per technician. Flag under $450.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff easy">Difficulty: Easy</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Lead turnover</div>
-                        <div class="task-note">Estimate won vs lost, estimate vs call.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff med">Difficulty: Easy–medium</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">DFO (Diagnostic Fee Only)</div>
-                        <div class="task-note">Monthly and yearly. Flag under 5% as green.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff med">Difficulty: Medium</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-            </ul>
-        </article>
-
-        <!-- Phase 2 -->
-        <article class="phase-card" aria-label="Phase 2">
-            <div class="phase-head">
-                <h3 class="phase-title">Phase 2 (operational insight)</h3>
-                <div class="phase-meta">
-                    <span class="meta-chip">More definitions</span>
-                    <span class="meta-chip">Better accountability</span>
-                </div>
-            </div>
-
-            <ul class="phase-list">
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Club agreement conversions</div>
-                        <div class="task-note">Service calls with Wizard Club member, conversion rate, flag under 50% as red.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff med">Difficulty: Medium</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Callback percentage</div>
-                        <div class="task-note">Service and install crews. Thresholds: ≤3% green, 3–7% orange, ≥8% red.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff hard">Difficulty: Medium–hard</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Residential budget progress</div>
-                        <div class="task-note">How much until monthly budget target is met (requires monthly target value).</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff med">Difficulty: Medium</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Revenue per employee</div>
-                        <div class="task-note">Requires definition of active employees and time windows.</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff hard">Difficulty: Hard</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-            </ul>
-        </article>
-
-        <!-- Phase 3 -->
-        <article class="phase-card phase-wide" aria-label="Phase 3">
-            <div class="phase-head">
-                <h3 class="phase-title">Phase 3 (advanced, premium KPIs)</h3>
-                <div class="phase-meta">
-                    <span class="meta-chip">Most complex</span>
-                    <span class="meta-chip">Requires config tables</span>
-                    <span class="meta-chip">Per technician cards</span>
-                </div>
-            </div>
-
-            <ul class="phase-list">
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Service efficiency (billed hours vs paid hours)</div>
-                        <div class="task-note">o    Billed hours vs paid hours</div>
-                    </div>
-                    <div class="task-right">
-                        <span class="diff hard">Difficulty: Hard</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Gross profit per job per technician per hour (service techs only)</div>
-                        <div class="task-note">
-                            Needs parts cost, parts duration, job classification, fixed labor assumption ($525),
-                            and clear attribution rules for multi-tech jobs. Target: $150/hr or greater is green.
+            
+            <div class="jc-phase-tasks">
+                <div class="jc-task-item jc-task-done" data-done="1">
+                    <div class="jc-task-checkbox">✓</div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Total revenue by department</div>
+                        <div class="jc-task-desc">Residential, commercial, maintenance, demand service, change out, plus service plan revenue.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-easy">Very Easy</span>
+                            <span class="jc-task-status jc-status-complete">Complete</span>
                         </div>
                     </div>
-                    <div class="task-right">
-                        <span class="diff hard">Difficulty: Very hard</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
+                </div>
 
-                <li class="task-row" data-done="0">
-                    <div class="task-left">
-                        <div class="task-name">Per technician KPI cards</div>
-                        <div class="task-note">Cards per employee: average ticket, gross profit/hr, callbacks, first-time completion, DFO.</div>
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Average ticket (service only)</div>
+                        <div class="jc-task-desc">Overall and per technician. Flag under $450.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-easy">Easy</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
                     </div>
-                    <div class="task-right">
-                        <span class="diff med">Difficulty: Medium</span>
-                        <span class="status-pill status-notstarted">Not started</span>
-                    </div>
-                </li>
-            </ul>
+                </div>
 
-            <div class="roadmap-note">
-                Note: Hard items depend on definitions and consistent tagging. If definitions change midstream,
-                KPI logic may require rework.
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Lead turnover</div>
+                        <div class="jc-task-desc">Estimate won vs lost, estimate vs call.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Easy–Medium</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">DFO (Diagnostic Fee Only)</div>
+                        <div class="jc-task-desc">Monthly and yearly. Flag under 5% as green.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Medium</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </article>
 
+        <!-- PHASE 2 -->
+        <article class="jc-phase-card" aria-label="Phase 2">
+            <div class="jc-phase-header">
+                <h3 class="jc-phase-title">Phase 2</h3>
+                <div class="jc-phase-tags">
+                    <span class="jc-tag jc-tag-purple">Operational</span>
+                    <span class="jc-tag jc-tag-yellow">Med Complexity</span>
+                </div>
+            </div>
+            
+            <div class="jc-phase-tasks">
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Club agreement conversions</div>
+                        <div class="jc-task-desc">Service calls with Wizard Club member, conversion rate, flag under 50% as red.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Medium</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Callback percentage</div>
+                        <div class="jc-task-desc">Service and install crews. Thresholds: ≤3% green, 3–7% orange, ≥8% red.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-hard">Medium–Hard</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Residential budget progress</div>
+                        <div class="jc-task-desc">How much until monthly budget target is met (requires monthly target value).</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Medium</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Revenue per employee</div>
+                        <div class="jc-task-desc">Requires definition of active employees and time windows.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-hard">Hard</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+        <!-- PHASE 3 -->
+        <article class="jc-phase-card jc-phase-wide" aria-label="Phase 3">
+            <div class="jc-phase-header">
+                <h3 class="jc-phase-title">Phase 3</h3>
+                <div class="jc-phase-tags">
+                    <span class="jc-tag jc-tag-red">Advanced</span>
+                    <span class="jc-tag jc-tag-orange">High Complexity</span>
+                    <span class="jc-tag jc-tag-teal">Premium KPIs</span>
+                </div>
+            </div>
+            
+            <div class="jc-phase-tasks">
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Service efficiency (billed hours vs paid hours)</div>
+                        <div class="jc-task-desc">Billed hours vs paid hours</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-hard">Hard</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Gross profit per job per technician per hour</div>
+                        <div class="jc-task-desc">Needs parts cost, parts duration, job classification, fixed labor assumption ($525), and clear attribution rules for multi-tech jobs. Target: $150/hr or greater is green.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-hard">Very Hard</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jc-task-item" data-done="0">
+                    <div class="jc-task-checkbox"></div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">Per technician KPI cards</div>
+                        <div class="jc-task-desc">Cards per employee: average ticket, gross profit/hr, callbacks, first-time completion, DFO.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Medium</span>
+                            <span class="jc-task-status">Not Started</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="jc-phase-note">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                <span>Hard items depend on definitions and consistent tagging. If definitions change midstream, KPI logic may require rework.</span>
+            </div>
+        </article>
     </div>
 </section>
 
-<!-- REPEAT JOBS TABLE -->
-<section class="section-card" aria-labelledby="repeat-jobs-title">
+<!-- REPEAT JOBS SECTION -->
+<section class="jc-data-card" aria-labelledby="repeat-jobs-title">
+    <div class="jc-data-header">
+        <div class="jc-data-title-group">
+            <h2 id="repeat-jobs-title" class="jc-section-title">Repeat-Visit Completed Jobs</h2>
+            <p class="jc-data-subtitle">Jobs requiring 2+ appointments - review to improve First-Time Completion</p>
+        </div>
+    </div>
 
-    <h2 id="repeat-jobs-title" class="section-title">
-        Repeat-Visit Completed Jobs (2+ appointments)
-    </h2>
-
-    <p class="text-muted jc-section-note">
-        These jobs required at least one return trip. Reviewing these is the fastest way
-        to improve First-Time Completion.
-    </p>
-
-    <div class="table-responsive">
-        <table class="table table-sm table-striped align-middle">
+    <div class="jc-table-container">
+        <table class="jc-data-table">
             <thead>
                 <tr>
-                    <th scope="col">Completed</th>
-                    <th scope="col">Customer</th>
-                    <th scope="col">Appointments</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Description</th>
+                    <th>Completed</th>
+                    <th>Customer</th>
+                    <th>Appointments</th>
+                    <th>Status</th>
+                    <th>Description</th>
                 </tr>
             </thead>
             <tbody>
                 {% if repeat_jobs and repeat_jobs|length > 0 %}
                     {% for r in repeat_jobs %}
-                        <tr>
-                            <td>{{ r.completed_at_central }}</td>
-                            <td>{{ r.customer_name }}</td>
-                            <td>
-                                <span class="badge text-bg-secondary">
-                                    {{ r.num_appointments }}
-                                </span>
-                            </td>
-                            <td>{{ r.work_status }}</td>
-                            <td class="jc-desc-cell">{{ r.description }}</td>
-                        </tr>
+                    <tr>
+                        <td>{{ r.completed_at_central }}</td>
+                        <td class="jc-cell-bold">{{ r.customer_name }}</td>
+                        <td>
+                            <span class="jc-appt-badge">{{ r.num_appointments }}</span>
+                        </td>
+                        <td>
+                            <span class="jc-work-status">{{ r.work_status }}</span>
+                        </td>
+                        <td class="jc-desc-cell">{{ r.description }}</td>
+                    </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="5" class="text-muted">
-                            No repeat-visit completed jobs found.
-                        </td>
+                        <td colspan="5" class="jc-empty-cell">No repeat-visit completed jobs found.</td>
                     </tr>
                 {% endif %}
             </tbody>
         </table>
     </div>
-
 </section>
 
-<div class="text-center mb-3 jc-last-refresh">
-    <p class="text-muted">Last refreshed: {{ last_refresh }}</p>
+<div class="jc-footer-refresh">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+    </svg>
+    <span>Last refreshed: {{ last_refresh }}</span>
 </div>
 
 </main>
@@ -690,16 +471,26 @@
 
 <!-- Scripts -->
 <script>
-    // FTC progress bar width
-    const ftcBar = document.getElementById("ftc-progress-bar");
-    if (ftcBar) {
-        const pct = parseFloat(ftcBar.dataset.ftc || "0");
-        ftcBar.style.width = Math.max(0, Math.min(100, pct)) + "%";
+    // Revenue bar widths (set from data attributes)
+    document.querySelectorAll('.jc-revenue-bar-fill').forEach(function(bar) {
+        const width = bar.getAttribute('data-width');
+        if (width) {
+            bar.style.width = width + '%';
+        }
+    });
+
+    // FTC gauge circle animation
+    const gaugeCircle = document.querySelector('.jc-gauge-fill');
+    if (gaugeCircle) {
+        const percent = parseFloat(gaugeCircle.getAttribute('data-percent') || 0);
+        const circumference = 2 * Math.PI * 80; // 2 * π * radius
+        const dashValue = (percent / 100) * circumference;
+        gaugeCircle.style.strokeDasharray = dashValue + ' ' + circumference;
     }
 
-    // Roadmap progress bar (reads data-done flags that YOU update in HTML)
+    // Roadmap progress calculation
     (function () {
-        const items = Array.from(document.querySelectorAll(".phase-list .task-row"));
+        const items = Array.from(document.querySelectorAll(".jc-task-item"));
         const total = items.length;
         const done = items.filter(el => String(el.getAttribute("data-done") || "0") === "1").length;
 
@@ -716,7 +507,6 @@
 
         if (bar) {
             bar.style.width = pct + "%";
-            bar.setAttribute("aria-valuenow", String(pct));
         }
     })();
 </script>
