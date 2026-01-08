@@ -52,6 +52,14 @@
 
 {% set ftc_bar_class = 'bg-success' if first_time_completion_pct >= first_time_completion_target else 'bg-warning' if first_time_completion_pct >= 75 else 'bg-danger' %}
 
+<div class="jc-footer-refresh">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+    </svg>
+    <span>Last refreshed: {{ last_refresh }}</span>
+</div>
+
 <!-- TOP KPI GRID -->
 <section class="jc-kpi-grid" aria-label="Top KPIs">
 
