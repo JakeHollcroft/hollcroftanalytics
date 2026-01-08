@@ -25,8 +25,9 @@ print(
 print("\n=== ALL DISTINCT TAGS ===")
 print(
     conn.execute("""
-        SELECT DISTINCT(tags)
+        SELECT tags
         FROM jobs
+        WHERE tags = 'DFO'
     """).df()
 )
 

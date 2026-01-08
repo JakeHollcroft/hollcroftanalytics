@@ -1,4 +1,3 @@
-# kpis.py
 import duckdb
 import pandas as pd
 from pathlib import Path
@@ -110,6 +109,20 @@ def _ensure_columns(df: pd.DataFrame, cols_with_dtypes: dict) -> pd.DataFrame:
                 df[col] = pd.Series(dtype=dtype)
             except Exception:
                 df[col] = pd.Series(dtype="object")
+    return df
+
+
+def _convert_cents_to_dollars(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+    """
+    Convert specified monetary columns from cents to dollars.
+    Divides by 100 and handles NaN values gracefully.
+    """
+    df = df.copy()
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: x / 100 if pd.notna(x) else 0.0
+            )
     return df
 
 
@@ -277,6 +290,10 @@ def get_dashboard_kpis():
                 "due_concept": "object",
             },
         )
+
+        # Convert monetary values from cents to dollars
+        df_jobs = _convert_cents_to_dollars(df_jobs, ["total_amount", "outstanding_balance"])
+        df_invoices = _convert_cents_to_dollars(df_invoices, ["amount", "subtotal", "due_amount"])
 
         # Normalize tags
         if not df_jobs.empty:
