@@ -403,14 +403,19 @@ def get_dashboard_kpis():
 
         df_rev["category"] = df_rev["tags_norm"].fillna("").apply(_map_category_from_tags)
 
-        total_revenue_ytd = float(df_rev["amount"].sum()) if not df_rev.empty else 0.0
+        # Convert amounts from cents to dollars
+        df_rev["amount_dollars"] = df_rev["amount"].apply(
+            lambda x: x / 100 if pd.notna(x) else 0.0
+        )
+
+        total_revenue_ytd = float(df_rev["amount_dollars"].sum()) if not df_rev.empty else 0.0
 
         breakdown = (
-            df_rev.groupby("category", dropna=False)["amount"]
+            df_rev.groupby("category", dropna=False)["amount_dollars"]
             .sum()
             .sort_values(ascending=False)
             .reset_index()
-            .rename(columns={"amount": "revenue"})
+            .rename(columns={"amount_dollars": "revenue"})
         )
 
         revenue_breakdown = []
