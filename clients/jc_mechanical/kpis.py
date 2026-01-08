@@ -178,6 +178,18 @@ def _map_category_from_tags(tags_norm: str) -> str:
     return "Other / Unclassified"
 
 
+def _is_dfo_job(tags_norm: str) -> bool:
+    """
+    DFO = Diagnostic Fee Only
+    A job is DFO if it has service/demand service tag but NOT install/change-out.
+    Meaning: service was rendered without parts installation.
+    """
+    is_service = _tag_has(tags_norm, "service") or _tag_has(tags_norm, "demand service") or _tag_has(tags_norm, "demand")
+    is_install = _tag_has(tags_norm, "install") or _tag_has(tags_norm, "installation") or _tag_has(tags_norm, "change out") or _tag_has(tags_norm, "change-out")
+    
+    return is_service and not is_install
+
+
 def _format_currency(x: float) -> str:
     try:
         return "${:,.0f}".format(float(x))
@@ -185,10 +197,15 @@ def _format_currency(x: float) -> str:
         return "$0"
 
 
+# Get last_refresh_display for module use
+last_refresh_display = ""
+
 # -----------------------------
 # KPI builder
 # -----------------------------
 def get_dashboard_kpis():
+    global last_refresh_display
+    
     conn = duckdb.connect(DB_FILE)
     try:
         ensure_tables(conn)
@@ -225,6 +242,19 @@ def get_dashboard_kpis():
                 "customer_id": "object",
                 "first_name": "object",
                 "last_name": "object",
+                "email": "object",
+                "mobile_number": "object",
+                "home_number": "object",
+                "work_number": "object",
+                "company": "object",
+                "notifications_enabled": "bool",
+                "lead_source": "object",
+                "notes": "object",
+                "created_at": "object",
+                "updated_at": "object",
+                "company_name": "object",
+                "company_id": "object",
+                "tags": "object",
             },
         )
 
@@ -236,70 +266,46 @@ def get_dashboard_kpis():
                 "invoice_number": "object",
                 "status": "object",
                 "amount": "float64",
+                "subtotal": "float64",
                 "due_amount": "float64",
+                "due_at": "object",
                 "paid_at": "object",
+                "sent_at": "object",
+                "service_date": "object",
+                "invoice_date": "object",
+                "display_due_concept": "object",
+                "due_concept": "object",
             },
         )
 
-        # -----------------------------------
-        # Last refresh (safe if missing)
-        # -----------------------------------
-        last_refresh = None
-        try:
-            last_refresh_row = conn.execute("""
-                SELECT value FROM metadata WHERE key = 'last_refresh'
-            """).fetchone()
-            last_refresh = last_refresh_row[0] if last_refresh_row else None
-        except Exception:
-            last_refresh = None
-
-        if last_refresh:
-            try:
-                utc_dt = datetime.fromisoformat(last_refresh).replace(tzinfo=ZoneInfo("UTC"))
-                central_dt = utc_dt.astimezone(ZoneInfo("America/Chicago"))
-                last_refresh_display = central_dt.strftime("%b %d, %Y %I:%M %p %Z")
-            except Exception:
-                last_refresh_display = "Unknown"
+        # Normalize tags
+        if not df_jobs.empty:
+            df_jobs["tags_norm"] = df_jobs["tags"].apply(_normalize_tags)
         else:
-            last_refresh_display = "Never"
+            df_jobs["tags_norm"] = ""
 
-        # -----------------------------------
-        # Data cleanup
-        # -----------------------------------
-        # Housecall often returns cents; keep /100 scaling
-        df_jobs["total_amount"] = (
-            pd.to_numeric(df_jobs.get("total_amount", 0), errors="coerce").fillna(0) / 100
-        )
+        # Parse datetime columns
+        for col in ["created_at", "updated_at", "completed_at"]:
+            if col in df_jobs.columns:
+                df_jobs[col] = pd.to_datetime(df_jobs[col], errors="coerce", utc=True)
 
-        df_jobs["outstanding_balance"] = (
-            pd.to_numeric(df_jobs.get("outstanding_balance", 0), errors="coerce").fillna(0) / 100
-        )
+        for col in ["paid_at", "sent_at", "service_date", "invoice_date"]:
+            if col in df_invoices.columns:
+                df_invoices[col] = pd.to_datetime(df_invoices[col], errors="coerce", utc=True)
 
-        df_jobs["num_appointments"] = (
-            pd.to_numeric(df_jobs.get("num_appointments", 0), errors="coerce").fillna(0).astype(int)
-        )
+        # Ensure paid_at_dt exists for revenue filtering
+        if "paid_at" in df_invoices.columns:
+            df_invoices["paid_at_dt"] = df_invoices["paid_at"]
+        else:
+            df_invoices["paid_at_dt"] = pd.NaT
 
-        df_jobs["completed_at"] = pd.to_datetime(df_jobs.get("completed_at"), errors="coerce", utc=True)
-
-        # Normalize job tags for category mapping
-        df_jobs["tags_norm"] = df_jobs.get("tags", "").apply(_normalize_tags)
-
-        df_invoices["amount"] = (
-            pd.to_numeric(df_invoices.get("amount", 0), errors="coerce").fillna(0) / 100
-        )
-
-        df_invoices["due_amount"] = (
-            pd.to_numeric(df_invoices.get("due_amount", 0), errors="coerce").fillna(0) / 100
-        )
-
-        # Parse paid_at for YTD filter (used for paid)
-        df_invoices["paid_at_dt"] = pd.to_datetime(df_invoices.get("paid_at"), errors="coerce", utc=True)
-
-        # -----------------------------------
-        # Joins
-        # -----------------------------------
-        # invoices -> customer_id via jobs (safe even if empty)
-        if not df_invoices.empty and not df_jobs.empty and {"job_id", "customer_id"}.issubset(df_jobs.columns):
+        # invoices -> job data
+        if (
+            not df_invoices.empty
+            and not df_jobs.empty
+            and "job_id" in df_invoices.columns
+            and "job_id" in df_jobs.columns
+        ):
             df_invoices = df_invoices.merge(
                 df_jobs[["job_id", "customer_id"]],
                 how="left",
@@ -435,6 +441,49 @@ def get_dashboard_kpis():
         first_time_completion_target = 85
 
         # -----------------------------------
+        # DFO (Diagnostic Fee Only) KPI
+        # Service jobs that are NOT installations/change-outs
+        # -----------------------------------
+        df_dfo = df_completed[df_completed["tags_norm"].apply(_is_dfo_job)].copy()
+        dfo_count = len(df_dfo)
+        
+        if completed_jobs > 0:
+            dfo_pct = round((dfo_count / completed_jobs) * 100, 2)
+        else:
+            dfo_pct = 0.0
+
+        # DFO color status: < 5% = green, 5-10% = orange, >= 10% = red
+        if dfo_pct < 5:
+            dfo_status_color = "success"  # green
+        elif dfo_pct < 10:
+            dfo_status_color = "warning"  # orange
+        else:
+            dfo_status_color = "danger"   # red
+
+        # Monthly breakdown for DFO
+        dfo_monthly = []
+        if not df_dfo.empty:
+            df_dfo_monthly = df_dfo.copy()
+            df_dfo_monthly["month"] = pd.to_datetime(df_dfo_monthly["completed_at"]).dt.to_period("M")
+            monthly_counts = df_dfo_monthly.groupby("month").size()
+            
+            # Also get total jobs per month for percentage
+            df_completed_monthly = df_completed.copy()
+            df_completed_monthly["month"] = pd.to_datetime(df_completed_monthly["completed_at"]).dt.to_period("M")
+            monthly_total = df_completed_monthly.groupby("month").size()
+            
+            for month in monthly_counts.index:
+                dfo_cnt = monthly_counts.get(month, 0)
+                total_cnt = monthly_total.get(month, 1)
+                pct = round((dfo_cnt / total_cnt) * 100, 1) if total_cnt > 0 else 0
+                dfo_monthly.append({
+                    "month": str(month),
+                    "dfo_count": int(dfo_cnt),
+                    "total_count": int(total_cnt),
+                    "dfo_pct": float(pct)
+                })
+
+        # -----------------------------------
         # Repeat-visit table (action list)
         # Show most recent completed jobs with num_appointments >= 2
         # -----------------------------------
@@ -470,6 +519,9 @@ def get_dashboard_kpis():
         # Refresh status
         # -----------------------------------
         refresh_status = get_refresh_status()
+        
+        # Set global for module use
+        last_refresh_display = refresh_status.get("last_refresh_display", "")
 
         return {
             # Existing KPI
@@ -485,6 +537,12 @@ def get_dashboard_kpis():
             "total_revenue_ytd": total_revenue_ytd,
             "total_revenue_ytd_display": total_revenue_display,
             "revenue_breakdown_ytd": revenue_breakdown,
+
+            # DFO KPI
+            "dfo_pct": dfo_pct,
+            "dfo_count": dfo_count,
+            "dfo_status_color": dfo_status_color,
+            "dfo_monthly": dfo_monthly,
 
             # Meta
             "last_refresh": last_refresh_display,
@@ -505,22 +563,33 @@ def get_refresh_status():
         """).fetchone()
 
         if not row:
-            return {"can_refresh": True, "next_refresh": "Now"}
+            return {
+                "can_refresh": True,
+                "next_refresh": "Now",
+                "last_refresh_display": "No data yet"
+            }
 
         # 1-hour constraint
         try:
             last_refresh_utc = datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
         except Exception:
-            return {"can_refresh": True, "next_refresh": "Now"}
+            return {
+                "can_refresh": True,
+                "next_refresh": "Now",
+                "last_refresh_display": "Unknown"
+            }
 
         next_allowed = last_refresh_utc + timedelta(hours=1)
-
         now_utc = datetime.now(timezone.utc)
         central = ZoneInfo("America/Chicago")
+        
+        last_refresh_central = last_refresh_utc.astimezone(central)
+        last_refresh_display = last_refresh_central.strftime("%b %d, %Y %I:%M %p %Z")
 
         return {
             "can_refresh": now_utc >= next_allowed,
             "next_refresh": next_allowed.astimezone(central).strftime("%b %d, %Y %I:%M %p %Z"),
+            "last_refresh_display": last_refresh_display,
         }
 
     finally:

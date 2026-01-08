@@ -119,6 +119,47 @@
         </div>
     </article>
 
+    <!-- DFO (DIAGNOSTIC FEE ONLY) CARD -->
+    <article class="jc-kpi-card jc-kpi-dfo" aria-labelledby="kpi-dfo-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 6v6l4 2"></path>
+                </svg>
+            </div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">DFO Rate (YTD)</div>
+                <div class="jc-kpi-badge">Quality KPI</div>
+            </div>
+        </div>
+        
+        <div class="jc-dfo-main">
+            <div class="jc-dfo-percentage">
+                <span class="jc-dfo-value" style="color: {% if dfo_status_color == 'success' %}#28a745{% elif dfo_status_color == 'warning' %}#ffc107{% else %}#dc3545{% endif %};">
+                    {{ dfo_pct }}%
+                </span>
+                <span class="jc-dfo-count">{{ dfo_count }} of {{ completed_jobs }} jobs</span>
+            </div>
+            
+            <div class="jc-dfo-threshold">
+                <span class="jc-threshold-label">Target:</span>
+                <span class="jc-threshold-value" style="color: #28a745;">&lt; 5%</span>
+                {% if dfo_pct < 5 %}
+                    <span class="jc-threshold-status" style="color: #28a745;">✓ On Target</span>
+                {% elif dfo_pct < 10 %}
+                    <span class="jc-threshold-status" style="color: #ffc107;">⚠ Monitor</span>
+                {% else %}
+                    <span class="jc-threshold-status" style="color: #dc3545;">✗ Action Needed</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Service jobs with no installation/change-out</span>
+        </div>
+    </article>
+
     <!-- FIRST-TIME COMPLETION CARD -->
 <article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
   <div class="jc-ftc-layout">
@@ -202,41 +243,23 @@
           <polyline points="23 4 23 10 17 10"></polyline>
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
         </svg>
-        <span>Last refreshed: {{ last_refresh }}</span>
+        <span class="jc-refresh-label">Last refreshed: {{ last_refresh }}</span>
       </div>
     </div>
   </div>
 </article>
+
 </section>
 
 <!-- ROADMAP SECTION -->
-<section class="jc-roadmap-card" aria-labelledby="roadmap-title">
+<section class="jc-roadmap-section">
     <div class="jc-roadmap-header">
-        <div class="jc-roadmap-title-group">
-            <div class="jc-section-badge">Build Roadmap</div>
-            <h2 id="roadmap-title" class="jc-section-title">KPI Expansion Progress</h2>
-        </div>
+        <h2 class="jc-roadmap-title">KPI Roadmap</h2>
         
-        <div class="jc-roadmap-badges">
-            <span class="jc-status-badge status-in-progress">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                In Progress
-            </span>
-            <span class="jc-refresh-badge">{{ last_refresh }}</span>
-        </div>
-    </div>
-
-    <div class="jc-roadmap-progress">
-        <div class="jc-progress-header">
-            <span class="jc-progress-label">Overall Completion</span>
-            <span class="jc-progress-stats">
-                <span id="roadmap-done">0</span>/<span id="roadmap-total">0</span> items
-                <span class="jc-progress-dot">•</span>
-                <span id="roadmap-pct">0</span>%
-            </span>
+        <div class="jc-progress-stats">
+            <span id="roadmap-done">0</span>/<span id="roadmap-total">0</span> items
+            <span class="jc-progress-dot">•</span>
+            <span id="roadmap-pct">0</span>%
         </div>
         
         <div class="jc-progress-bar-container">
@@ -268,6 +291,18 @@
                     </div>
                 </div>
 
+                <div class="jc-task-item jc-task-done" data-done="1">
+                    <div class="jc-task-checkbox">✓</div>
+                    <div class="jc-task-content">
+                        <div class="jc-task-name">DFO (Diagnostic Fee Only)</div>
+                        <div class="jc-task-desc">Monthly and yearly. Flag under 5% as green.</div>
+                        <div class="jc-task-meta">
+                            <span class="jc-difficulty jc-diff-medium">Medium</span>
+                            <span class="jc-task-status jc-status-in-progress">In Progress</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="jc-task-item" data-done="0">
                     <div class="jc-task-checkbox"></div>
                     <div class="jc-task-content">
@@ -287,18 +322,6 @@
                         <div class="jc-task-desc">Estimate won vs lost, estimate vs call.</div>
                         <div class="jc-task-meta">
                             <span class="jc-difficulty jc-diff-medium">Easy–Medium</span>
-                            <span class="jc-task-status">Not Started</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="jc-task-item" data-done="0">
-                    <div class="jc-task-checkbox"></div>
-                    <div class="jc-task-content">
-                        <div class="jc-task-name">DFO (Diagnostic Fee Only)</div>
-                        <div class="jc-task-desc">Monthly and yearly. Flag under 5% as green.</div>
-                        <div class="jc-task-meta">
-                            <span class="jc-difficulty jc-diff-medium">Medium</span>
                             <span class="jc-task-status">Not Started</span>
                         </div>
                     </div>
