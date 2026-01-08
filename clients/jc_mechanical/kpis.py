@@ -120,9 +120,7 @@ def _convert_cents_to_dollars(df: pd.DataFrame, columns: list) -> pd.DataFrame:
     df = df.copy()
     for col in columns:
         if col in df.columns:
-            df[col] = df[col].apply(
-                lambda x: x / 100 if pd.notna(x) else 0.0
-            )
+            df[col] = df[col].apply(lambda x: x / 100 if pd.notna(x) else 0.0)
     return df
 
 
@@ -157,9 +155,18 @@ def _map_category_from_tags(tags_norm: str) -> str:
     is_res = _tag_has(tags_norm, "residential")
     is_com = _tag_has(tags_norm, "commercial")
 
-    is_install = _tag_has(tags_norm, "install") or _tag_has(tags_norm, "installation") or _tag_has(tags_norm, "change out") or _tag_has(tags_norm, "change-out")
+    is_install = (
+        _tag_has(tags_norm, "install")
+        or _tag_has(tags_norm, "installation")
+        or _tag_has(tags_norm, "change out")
+        or _tag_has(tags_norm, "change-out")
+    )
     is_maint = _tag_has(tags_norm, "maintenance")
-    is_service = _tag_has(tags_norm, "service") or _tag_has(tags_norm, "demand service") or _tag_has(tags_norm, "demand")
+    is_service = (
+        _tag_has(tags_norm, "service")
+        or _tag_has(tags_norm, "demand service")
+        or _tag_has(tags_norm, "demand")
+    )
 
     s = tags_norm
     if "residential install" in s or "residential change out" in s or "residential change-out" in s:
@@ -196,7 +203,7 @@ def _is_dfo_job(tags_norm: str) -> bool:
     DFO = Diagnostic Fee Only
     Check if the job has the explicit 'DFO' tag.
     """
-    return _tag_has(tags_norm, "dfo")
+    return _tag_has(tags_norm, "DFO")
 
 
 def _format_currency(x: float) -> str:
@@ -209,12 +216,13 @@ def _format_currency(x: float) -> str:
 # Get last_refresh_display for module use
 last_refresh_display = ""
 
+
 # -----------------------------
 # KPI builder
 # -----------------------------
 def get_dashboard_kpis():
     global last_refresh_display
-    
+
     conn = duckdb.connect(DB_FILE)
     try:
         ensure_tables(conn)
@@ -287,7 +295,7 @@ def get_dashboard_kpis():
             },
         )
 
-        # Convert monetary values from cents to dollars
+        # Convert monetary values from cents -> dollars (DO THIS ONCE)
         df_jobs = _convert_cents_to_dollars(df_jobs, ["total_amount", "outstanding_balance"])
         df_invoices = _convert_cents_to_dollars(df_invoices, ["amount", "subtotal", "due_amount"])
 
@@ -403,10 +411,8 @@ def get_dashboard_kpis():
 
         df_rev["category"] = df_rev["tags_norm"].fillna("").apply(_map_category_from_tags)
 
-        # Convert amounts from cents to dollars
-        df_rev["amount_dollars"] = df_rev["amount"].apply(
-            lambda x: x / 100 if pd.notna(x) else 0.0
-        )
+        # IMPORTANT: df_invoices["amount"] was already converted from cents -> dollars above.
+        df_rev["amount_dollars"] = df_rev["amount"].fillna(0.0).astype(float)
 
         total_revenue_ytd = float(df_rev["amount_dollars"].sum()) if not df_rev.empty else 0.0
 
@@ -437,7 +443,7 @@ def get_dashboard_kpis():
         invoice_count = len(df_rev) if not df_rev.empty else 0
         average_ticket_value = (total_revenue_ytd / invoice_count) if invoice_count > 0 else 0.0
         average_ticket_display = _format_currency(average_ticket_value)
-        
+
         # Flag if under $450
         average_ticket_threshold = 450.0
         if average_ticket_value < average_ticket_threshold:
@@ -478,7 +484,7 @@ def get_dashboard_kpis():
         # -----------------------------------
         df_dfo = df_completed[df_completed["tags_norm"].apply(_is_dfo_job)].copy()
         dfo_count = len(df_dfo)
-        
+
         if completed_jobs > 0:
             dfo_pct = round((dfo_count / completed_jobs) * 100, 2)
         else:
@@ -498,12 +504,12 @@ def get_dashboard_kpis():
             df_dfo_monthly = df_dfo.copy()
             df_dfo_monthly["month"] = pd.to_datetime(df_dfo_monthly["completed_at"]).dt.to_period("M")
             monthly_counts = df_dfo_monthly.groupby("month").size()
-            
+
             # Also get total jobs per month for percentage
             df_completed_monthly = df_completed.copy()
             df_completed_monthly["month"] = pd.to_datetime(df_completed_monthly["completed_at"]).dt.to_period("M")
             monthly_total = df_completed_monthly.groupby("month").size()
-            
+
             for month in monthly_counts.index:
                 dfo_cnt = monthly_counts.get(month, 0)
                 total_cnt = monthly_total.get(month, 1)
@@ -551,7 +557,7 @@ def get_dashboard_kpis():
         # Refresh status
         # -----------------------------------
         refresh_status = get_refresh_status()
-        
+
         # Set global for module use
         last_refresh_display = refresh_status.get("last_refresh_display", "")
 
@@ -621,7 +627,7 @@ def get_refresh_status():
         next_allowed = last_refresh_utc + timedelta(hours=1)
         now_utc = datetime.now(timezone.utc)
         central = ZoneInfo("America/Chicago")
-        
+
         last_refresh_central = last_refresh_utc.astimezone(central)
         last_refresh_display = last_refresh_central.strftime("%b %d, %Y %I:%M %p %Z")
 
