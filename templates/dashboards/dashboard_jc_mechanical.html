@@ -136,14 +136,39 @@
                     </div>
                 </div>
                 
-                <div class="jc-ftc-gauge">
-                    <svg viewBox="0 0 200 200" class="jc-gauge-svg">
-                        <circle cx="100" cy="100" r="80" class="jc-gauge-bg"></circle>
-                        <circle cx="100" cy="100" r="80" class="jc-gauge-fill" data-percent="{{ first_time_completion_pct }}"></circle>
-                        <text x="100" y="95" class="jc-gauge-value">{{ first_time_completion_pct }}%</text>
-                        <text x="100" y="115" class="jc-gauge-label">Complete</text>
-                    </svg>
-                </div>
+        <div class="jc-ftc-gauge">
+  <svg viewBox="0 0 200 200" class="jc-gauge-svg">
+    <!-- Background ring -->
+    <circle
+      cx="100" cy="100" r="80"
+      class="jc-gauge-bg">
+    </circle>
+
+    <!-- Animated ring -->
+    <circle
+      cx="100" cy="100" r="80"
+      class="jc-gauge-fill"
+      data-percent="100">
+    </circle>
+
+    <!-- Animated number -->
+    <text
+      x="100" y="95"
+      class="jc-gauge-value"
+      data-target="100"
+      transform="rotate(90 100 100)">
+      0%
+    </text>
+
+    <text
+      x="100" y="115"
+      class="jc-gauge-label"
+      transform="rotate(90 100 100)">
+      Complete
+    </text>
+  </svg>
+</div>
+
                 
                 <div class="jc-ftc-target">
                     <span class="jc-target-label">Target:</span>
@@ -522,6 +547,75 @@
         });
     }
 </script>
+
+<script>
+(function () {
+  function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function animateGauge(gaugeEl, valueEl, targetPercent, durationMs) {
+    const r = parseFloat(gaugeEl.getAttribute("r")) || 80;
+    const circumference = 2 * Math.PI * r;
+
+    // Ensure stroke math works
+    gaugeEl.style.strokeDasharray = `${circumference}`;
+    gaugeEl.style.strokeDashoffset = `${circumference}`;
+
+    const start = performance.now();
+    const target = clamp(Number(targetPercent) || 0, 0, 100);
+
+    function frame(now) {
+      const t = clamp((now - start) / durationMs, 0, 1);
+      const eased = easeOutCubic(t);
+
+      const current = target * eased;
+
+      // Number
+      valueEl.textContent = `${current.toFixed(1)}%`;
+
+      // Ring fill (0% = full offset, 100% = 0 offset)
+      const offset = circumference * (1 - (current / 100));
+      gaugeEl.style.strokeDashoffset = `${offset}`;
+
+      if (t < 1) requestAnimationFrame(frame);
+      else {
+        // Snap to final (avoid 99.9% visually)
+        valueEl.textContent = `${target.toFixed(1)}%`;
+        gaugeEl.style.strokeDashoffset = `${circumference * (1 - (target / 100))}`;
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const gauge = document.querySelector(".jc-gauge-fill");
+    const value = document.querySelector(".jc-gauge-value");
+    if (!gauge || !value) return;
+
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const target = value.getAttribute("data-target") ?? gauge.getAttribute("data-percent") ?? 0;
+
+    if (prefersReduced) {
+      // No animation, just set final state
+      const r = parseFloat(gauge.getAttribute("r")) || 80;
+      const circumference = 2 * Math.PI * r;
+      const pct = clamp(Number(target) || 0, 0, 100);
+
+      gauge.style.strokeDasharray = `${circumference}`;
+      gauge.style.strokeDashoffset = `${circumference * (1 - (pct / 100))}`;
+      value.textContent = `${pct.toFixed(1)}%`;
+      return;
+    }
+
+    animateGauge(gauge, value, target, 900); // duration in ms
+  });
+})();
+</script>
+
 
 </body>
 </html>

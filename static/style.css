@@ -2247,3 +2247,10 @@ footer {
         justify-content: center;
     }
 }
+.jc-dash .jc-gauge-fill {
+  transition: none; /* let JS control it */
+}
+
+.jc-dash .jc-gauge-value {
+  font-variant-numeric: tabular-nums; /* steadier during counting */
+}
