@@ -160,6 +160,45 @@
         </div>
     </article>
 
+    <!-- AVERAGE TICKET VALUE CARD -->
+    <article class="jc-kpi-card jc-kpi-atv" aria-labelledby="kpi-atv-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+            </div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">Average Ticket Value (YTD)</div>
+                <div class="jc-kpi-badge">Revenue KPI</div>
+            </div>
+        </div>
+        
+        <div class="jc-atv-main">
+            <div class="jc-atv-value-section">
+                <span class="jc-atv-value" style="color: {% if average_ticket_status == 'success' %}#28a745{% else %}#dc3545{% endif %};">
+                    {{ average_ticket_display }}
+                </span>
+                <span class="jc-atv-count">{{ invoice_count }} invoices</span>
+            </div>
+            
+            <div class="jc-atv-threshold">
+                <span class="jc-threshold-label">Minimum Target:</span>
+                <span class="jc-threshold-value" style="color: #28a745;">$450</span>
+                {% if average_ticket_status == 'success' %}
+                    <span class="jc-threshold-status" style="color: #28a745;">✓ Above Target</span>
+                {% else %}
+                    <span class="jc-threshold-status" style="color: #dc3545;">✗ Below Target</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Includes: paid, open, pending_payment invoices</span>
+        </div>
+    </article>
+
     <!-- FIRST-TIME COMPLETION CARD -->
 <article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
   <div class="jc-ftc-layout">
@@ -310,7 +349,7 @@
                         <div class="jc-task-desc">Overall and per technician. Flag under $450.</div>
                         <div class="jc-task-meta">
                             <span class="jc-difficulty jc-diff-easy">Easy</span>
-                            <span class="jc-task-status">Not Started</span>
+                            <span class="jc-task-status jc-status-in-progress">In Progress</span>
                         </div>
                     </div>
                 </div>

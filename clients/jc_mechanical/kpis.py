@@ -427,6 +427,20 @@ def get_dashboard_kpis():
         total_revenue_display = _format_currency(total_revenue_ytd)
 
         # -----------------------------------
+        # Average Ticket Value KPI (YTD)
+        # -----------------------------------
+        invoice_count = len(df_rev) if not df_rev.empty else 0
+        average_ticket_value = (total_revenue_ytd / invoice_count) if invoice_count > 0 else 0.0
+        average_ticket_display = _format_currency(average_ticket_value)
+        
+        # Flag if under $450
+        average_ticket_threshold = 450.0
+        if average_ticket_value < average_ticket_threshold:
+            average_ticket_status = "danger"  # red
+        else:
+            average_ticket_status = "success"  # green
+
+        # -----------------------------------
         # Job subsets: completed jobs THIS YEAR and forward
         # -----------------------------------
         completed_statuses = ["complete unrated", "complete rated"]
@@ -550,6 +564,13 @@ def get_dashboard_kpis():
             "total_revenue_ytd": total_revenue_ytd,
             "total_revenue_ytd_display": total_revenue_display,
             "revenue_breakdown_ytd": revenue_breakdown,
+
+            # Average Ticket Value KPI
+            "average_ticket_value": average_ticket_value,
+            "average_ticket_display": average_ticket_display,
+            "average_ticket_status": average_ticket_status,
+            "average_ticket_threshold": average_ticket_threshold,
+            "invoice_count": invoice_count,
 
             # DFO KPI
             "dfo_pct": dfo_pct,

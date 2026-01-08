@@ -2254,3 +2254,67 @@ footer {
   transform-origin: center;
   transform: rotate(-90deg);
 }
+
+/* Average Ticket Value Card */
+.jc-kpi-atv {
+    grid-column: span 1;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border: 1px solid #e9ecef;
+}
+
+.jc-atv-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 1rem 0;
+}
+
+.jc-atv-value-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.jc-atv-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: -0.02em;
+}
+
+.jc-atv-count {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.jc-atv-threshold {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.jc-threshold-label {
+    font-size: 0.813rem;
+    color: #495057;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.jc-threshold-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.jc-threshold-status {
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
