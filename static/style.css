@@ -1530,12 +1530,6 @@ footer {
     position: relative;
 }
 
-.jc-dash .jc-gauge-value,
-.jc-dash .jc-gauge-label {
-    transform: rotate(90deg);
-    transform-origin: 50% 50%;
-}
-
 
 .jc-dash .jc-gauge-bg {
     fill: none;
