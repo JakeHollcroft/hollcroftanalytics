@@ -120,100 +120,93 @@
     </article>
 
     <!-- FIRST-TIME COMPLETION CARD -->
-    <article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
-        <div class="jc-ftc-layout">
-            <div class="jc-ftc-left">
-                <div class="jc-kpi-header">
-                    <div class="jc-kpi-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                    </div>
-                    <div class="jc-kpi-meta">
-                        <div class="jc-kpi-label">First-Time Completion</div>
-                        <div class="jc-kpi-badge">Quality KPI</div>
-                    </div>
-                </div>
-                
-        <div class="jc-ftc-gauge">
-  <svg viewBox="0 0 200 200" class="jc-gauge-svg">
-    <!-- Background ring -->
-    <circle
-      cx="100" cy="100" r="80"
-      class="jc-gauge-bg">
-    </circle>
-
-    <!-- Animated ring -->
-    <circle
-      cx="100" cy="100" r="80"
-      class="jc-gauge-fill"
-      data-percent="100">
-    </circle>
-
-    <!-- Animated number -->
-    <text
-      x="100" y="95"
-      class="jc-gauge-value"
-      data-target="100"
-      transform="rotate(90 100 100)">
-      0%
-    </text>
-
-    <text
-      x="100" y="115"
-      class="jc-gauge-label"
-      transform="rotate(90 100 100)">
-      Complete
-    </text>
-  </svg>
-</div>
-
-                
-                <div class="jc-ftc-target">
-                    <span class="jc-target-label">Target:</span>
-                    <span class="jc-target-value">{{ first_time_completion_target }}%</span>
-                </div>
-            </div>
-            
-            <div class="jc-ftc-right">
-                <div class="jc-ftc-stats">
-                    <div class="jc-stat-card">
-                        <div class="jc-stat-icon">✓</div>
-                        <div class="jc-stat-value">{{ first_time_completed }}</div>
-                        <div class="jc-stat-label">First-time (1 appt)</div>
-                    </div>
-                    
-                    <div class="jc-stat-card">
-                        <div class="jc-stat-icon">↻</div>
-                        <div class="jc-stat-value">{{ repeat_visit_completed }}</div>
-                        <div class="jc-stat-label">Repeat visit (2+)</div>
-                    </div>
-                    
-                    <div class="jc-stat-card">
-                        <div class="jc-stat-icon">%</div>
-                        <div class="jc-stat-value">{{ repeat_visit_pct }}%</div>
-                        <div class="jc-stat-label">Repeat-visit rate</div>
-                    </div>
-                    
-                    <div class="jc-stat-card">
-                        <div class="jc-stat-icon">#</div>
-                        <div class="jc-stat-value">{{ completed_jobs }}</div>
-                        <div class="jc-stat-label">Total completed</div>
-                    </div>
-                </div>
-                
-                <div class="jc-ftc-refresh">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="23 4 23 10 17 10"></polyline>
-                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                    </svg>
-                    <span>Last refreshed: {{ last_refresh }}</span>
-                </div>
-            </div>
+<article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
+  <div class="jc-ftc-layout">
+    <div class="jc-ftc-left">
+      <div class="jc-kpi-header">
+        <div class="jc-kpi-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
         </div>
-    </article>
+        <div class="jc-kpi-meta">
+          <div class="jc-kpi-label">First-Time Completion</div>
+          <div class="jc-kpi-badge">Quality KPI</div>
+        </div>
+      </div>
 
+      <div class="jc-ftc-gauge">
+        <svg viewBox="0 0 200 200" class="jc-gauge-svg">
+          <!-- Background ring -->
+          <circle cx="100" cy="100" r="80" class="jc-gauge-bg"></circle>
+
+          <!-- Animated ring -->
+          <circle
+            cx="100" cy="100" r="80"
+            class="jc-gauge-fill"
+            data-percent="{{ first_time_completion_pct }}">
+          </circle>
+
+          <!-- Animated number (keep UPRIGHT: no transform here) -->
+          <text
+            x="100" y="95"
+            class="jc-gauge-value"
+            data-target="{{ first_time_completion_pct }}">
+            0%
+          </text>
+
+          <text
+            x="100" y="115"
+            class="jc-gauge-label">
+            Complete
+          </text>
+        </svg>
+      </div>
+
+      <div class="jc-ftc-target">
+        <span class="jc-target-label">Target:</span>
+        <span class="jc-target-value">{{ first_time_completion_target }}%</span>
+      </div>
+    </div>
+
+    <div class="jc-ftc-right">
+      <div class="jc-ftc-stats">
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">✓</div>
+          <div class="jc-stat-value">{{ first_time_completed }}</div>
+          <div class="jc-stat-label">First-time (1 appt)</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">↻</div>
+          <div class="jc-stat-value">{{ repeat_visit_completed }}</div>
+          <div class="jc-stat-label">Repeat visit (2+)</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">%</div>
+          <div class="jc-stat-value">{{ repeat_visit_pct }}%</div>
+          <div class="jc-stat-label">Repeat-visit rate</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">#</div>
+          <div class="jc-stat-value">{{ completed_jobs }}</div>
+          <div class="jc-stat-label">Total completed</div>
+        </div>
+      </div>
+
+      <div class="jc-ftc-refresh">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        <span>Last refreshed: {{ last_refresh }}</span>
+      </div>
+    </div>
+  </div>
+</article>
 </section>
 
 <!-- ROADMAP SECTION -->
@@ -550,68 +543,42 @@
 
 <script>
 (function () {
-  function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
-  function easeOutCubic(t) {
-    return 1 - Math.pow(1 - t, 3);
-  }
+  document.addEventListener("DOMContentLoaded", () => {
+    const ring = document.querySelector(".jc-gauge-fill");
+    const value = document.querySelector(".jc-gauge-value");
+    if (!ring || !value) return;
 
-  function animateGauge(gaugeEl, valueEl, targetPercent, durationMs) {
-    const r = parseFloat(gaugeEl.getAttribute("r")) || 80;
+    const target = clamp(
+      Number(value.dataset.target || ring.dataset.percent || 0),
+      0, 100
+    );
+
+    const r = Number(ring.getAttribute("r")) || 80;
     const circumference = 2 * Math.PI * r;
 
-    // Ensure stroke math works
-    gaugeEl.style.strokeDasharray = `${circumference}`;
-    gaugeEl.style.strokeDashoffset = `${circumference}`;
+    ring.style.strokeDasharray = `${circumference}`;
+    ring.style.strokeDashoffset = `${circumference}`;
 
     const start = performance.now();
-    const target = clamp(Number(targetPercent) || 0, 0, 100);
+    const duration = 900;
 
-    function frame(now) {
-      const t = clamp((now - start) / durationMs, 0, 1);
-      const eased = easeOutCubic(t);
+    function animate(now) {
+      const progress = clamp((now - start) / duration, 0, 1);
+      const eased = easeOut(progress);
 
       const current = target * eased;
 
-      // Number
-      valueEl.textContent = `${current.toFixed(1)}%`;
+      value.textContent = `${current.toFixed(1)}%`;
+      ring.style.strokeDashoffset = `${circumference * (1 - current / 100)}`;
 
-      // Ring fill (0% = full offset, 100% = 0 offset)
-      const offset = circumference * (1 - (current / 100));
-      gaugeEl.style.strokeDashoffset = `${offset}`;
-
-      if (t < 1) requestAnimationFrame(frame);
-      else {
-        // Snap to final (avoid 99.9% visually)
-        valueEl.textContent = `${target.toFixed(1)}%`;
-        gaugeEl.style.strokeDashoffset = `${circumference * (1 - (target / 100))}`;
-      }
+      if (progress < 1) requestAnimationFrame(animate);
+      else value.textContent = `${target.toFixed(1)}%`;
     }
 
-    requestAnimationFrame(frame);
-  }
-
-  document.addEventListener("DOMContentLoaded", function () {
-    const gauge = document.querySelector(".jc-gauge-fill");
-    const value = document.querySelector(".jc-gauge-value");
-    if (!gauge || !value) return;
-
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const target = value.getAttribute("data-target") ?? gauge.getAttribute("data-percent") ?? 0;
-
-    if (prefersReduced) {
-      // No animation, just set final state
-      const r = parseFloat(gauge.getAttribute("r")) || 80;
-      const circumference = 2 * Math.PI * r;
-      const pct = clamp(Number(target) || 0, 0, 100);
-
-      gauge.style.strokeDasharray = `${circumference}`;
-      gauge.style.strokeDashoffset = `${circumference * (1 - (pct / 100))}`;
-      value.textContent = `${pct.toFixed(1)}%`;
-      return;
-    }
-
-    animateGauge(gauge, value, target, 900); // duration in ms
+    requestAnimationFrame(animate);
   });
 })();
 </script>

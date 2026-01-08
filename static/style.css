@@ -1531,11 +1531,6 @@ footer {
 }
 
 
-.jc-dash .jc-gauge-bg {
-    fill: none;
-    stroke: rgba(255, 255, 255, 0.08);
-    stroke-width: 16;
-}
 
 .jc-dash .jc-gauge-fill {
     fill: none;
@@ -2241,10 +2236,21 @@ footer {
         justify-content: center;
     }
 }
-.jc-dash .jc-gauge-fill {
-  transition: none; /* let JS control it */
-}
 
 .jc-dash .jc-gauge-value {
   font-variant-numeric: tabular-nums; /* steadier during counting */
+}
+/* DO NOT rotate the whole svg (it rotates the text too) */
+.jc-dash .jc-gauge-svg {
+  width: 100%;
+  height: 100%;
+  transform: none; /* was rotate(-90deg) */
+}
+
+/* Rotate ONLY the circles so the ring starts at top */
+.jc-dash .jc-gauge-bg,
+.jc-dash .jc-gauge-fill {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(-90deg);
 }
