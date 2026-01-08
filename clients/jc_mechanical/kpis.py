@@ -194,13 +194,9 @@ def _map_category_from_tags(tags_norm: str) -> str:
 def _is_dfo_job(tags_norm: str) -> bool:
     """
     DFO = Diagnostic Fee Only
-    A job is DFO if it has service/demand service tag but NOT install/change-out.
-    Meaning: service was rendered without parts installation.
+    Check if the job has the explicit 'DFO' tag.
     """
-    is_service = _tag_has(tags_norm, "service") or _tag_has(tags_norm, "demand service") or _tag_has(tags_norm, "demand")
-    is_install = _tag_has(tags_norm, "install") or _tag_has(tags_norm, "installation") or _tag_has(tags_norm, "change out") or _tag_has(tags_norm, "change-out")
-    
-    return is_service and not is_install
+    return _tag_has(tags_norm, "dfo")
 
 
 def _format_currency(x: float) -> str:
