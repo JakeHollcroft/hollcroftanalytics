@@ -242,6 +242,24 @@ def _is_dfo_job(tags_norm: str) -> bool:
     """
     return _tag_has(tags_norm, "DFO")
 
+def _is_callback_job(tags_norm: str) -> bool:
+    """
+    Callback / Recall / Warranty type jobs.
+    We rely on job tags. Update needles to match your tagging conventions.
+    """
+    if not tags_norm:
+        return False
+
+    needles = [
+        "callback",
+        "call back",
+        "call-back",
+        "recall",
+        "warranty",
+        "warrantee",
+    ]
+    return any(_tag_has(tags_norm, n) for n in needles)
+
 
 def _format_currency(x: float) -> str:
     try:
@@ -582,73 +600,98 @@ def get_dashboard_kpis():
             )
 
             # -----------------------------
-            # Avg ticket (service only) per tech
-            # Uses invoices (YTD) + jobs.tags -> category, filters to demand service categories
+            # Avg Ticket (OVERALL) per tech (YTD)
+            # Definition: average invoice amount on jobs they were assigned to (not split)
             # -----------------------------
-            avg_ticket_threshold = 450.0  # same target as overall ATV
+            avg_ticket_threshold = 450.0
 
-            df_emp_service = pd.DataFrame(columns=["employee_id", "avg_ticket_service", "service_invoice_count"])
+            df_emp_atv = pd.DataFrame(columns=["employee_id", "avg_ticket_overall", "overall_invoice_count"])
 
             if not df_rev.empty:
-                # df_rev is already filtered to YTD + allowed revenue statuses earlier in your file
-                # We need job tags to classify service categories, so join invoices -> jobs
-                inv_cols = []
-                if "invoice_id" in df_rev.columns:
-                    inv_cols.append("invoice_id")
-                else:
-                    # fallback: if invoice_id isn't present for some reason, we can still count rows
+                # Ensure invoice_id exists
+                if "invoice_id" not in df_rev.columns:
                     df_rev = df_rev.copy()
                     df_rev["invoice_id"] = df_rev.index.astype(str)
-                    inv_cols.append("invoice_id")
 
-                df_inv_jobs = df_rev[["job_id", "amount_dollars"] + inv_cols].merge(
-                    df_jobs[["job_id", "tags_norm", "tags"]].copy(),
-                    how="left",
+                df_inv_emp = df_rev[["invoice_id", "job_id", "amount_dollars"]].merge(
+                    df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
+                    how="inner",
                     on="job_id",
                 )
 
-                # Map to categories from tags
-                # Map to categories from tags (tags_norm is a normalized string)
-                df_inv_jobs["category"] = df_inv_jobs["tags_norm"].fillna("").astype(str).apply(_map_category_from_tags)
+                if not df_inv_emp.empty:
+                    df_emp_atv = (
+                        df_inv_emp.groupby("employee_id", dropna=False)
+                        .agg(
+                            overall_revenue=("amount_dollars", "sum"),
+                            overall_invoice_count=("invoice_id", "nunique"),
+                        )
+                        .reset_index()
+                    )
 
+                    df_emp_atv["avg_ticket_overall"] = df_emp_atv.apply(
+                        lambda r: (float(r["overall_revenue"]) / float(r["overall_invoice_count"]))
+                        if float(r["overall_invoice_count"]) > 0 else 0.0,
+                        axis=1,
+                    )
 
-                # Service-only categories (based on your current tag taxonomy)
-                service_categories = {"Residential demand service", "Commercial demand service"}
-                df_service_inv = df_inv_jobs[df_inv_jobs["category"].isin(service_categories)].copy()
+                    df_emp_atv = df_emp_atv[["employee_id", "avg_ticket_overall", "overall_invoice_count"]]
 
-                if not df_service_inv.empty:
-                    # Attribute invoices to employees via job_employees
-                    df_service_emp = df_service_inv.merge(
+            # Merge overall avg ticket onto the tech grouping
+            g = g.merge(df_emp_atv, how="left", on="employee_id")
+            g["avg_ticket_overall"] = g["avg_ticket_overall"].fillna(0.0)
+            g["overall_invoice_count"] = g["overall_invoice_count"].fillna(0).astype(int)
+
+            # -----------------------------
+            # Callback % per tech (YTD)
+            # Callback jobs = completed jobs with callback/recall/warranty style tags
+            # -----------------------------
+            df_emp_cb = pd.DataFrame(columns=["employee_id", "callback_jobs_ytd"])
+
+            if not df_completed.empty:
+                df_callbacks = df_completed[df_completed["tags_norm"].fillna("").apply(_is_callback_job)].copy()
+
+                if not df_callbacks.empty and not df_job_emps.empty:
+                    df_cb_emp = df_callbacks[["job_id"]].merge(
                         df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
                         how="inner",
                         on="job_id",
                     )
 
-                    df_emp_service = (
-                        df_service_emp.groupby("employee_id", dropna=False)
-                        .agg(
-                            service_revenue=("amount_dollars", "sum"),
-                            service_invoice_count=("invoice_id", "nunique"),
+                    if not df_cb_emp.empty:
+                        df_emp_cb = (
+                            df_cb_emp.groupby("employee_id", dropna=False)
+                            .agg(callback_jobs_ytd=("job_id", "nunique"))
+                            .reset_index()
                         )
-                        .reset_index()
-                    )
 
-                    df_emp_service["avg_ticket_service"] = df_emp_service.apply(
-                        lambda r: (float(r["service_revenue"]) / float(r["service_invoice_count"]))
-                        if float(r["service_invoice_count"]) > 0 else 0.0,
-                        axis=1,
-                    )
+            # Merge callback counts
+            g = g.merge(df_emp_cb, how="left", on="employee_id")
+            g["callback_jobs_ytd"] = g["callback_jobs_ytd"].fillna(0).astype(int)
 
-                    df_emp_service = df_emp_service[["employee_id", "avg_ticket_service", "service_invoice_count"]]
+            # Callback % (of completed jobs)
+            g["callback_pct_ytd"] = g.apply(
+                lambda r: (float(r["callback_jobs_ytd"]) / float(r["completed_jobs_ytd"]) * 100.0)
+                if float(r.get("completed_jobs_ytd") or 0) > 0 else 0.0,
+                axis=1,
+            )
 
-            # Merge service avg ticket onto the tech grouping
-            g = g.merge(df_emp_service, how="left", on="employee_id")
-            g["avg_ticket_service"] = g["avg_ticket_service"].fillna(0.0)
-            g["service_invoice_count"] = g["service_invoice_count"].fillna(0).astype(int)
 
             # Build template-ready list
             for _, r in g.iterrows():
-                avg_ticket_service = float(r.get("avg_ticket_service") or 0.0)
+                avg_ticket_overall = float(r.get("avg_ticket_overall") or 0.0)
+                callback_pct = float(r.get("callback_pct_ytd") or 0.0)
+                callback_jobs_ytd = int(r.get("callback_jobs_ytd") or 0)
+
+                # Callback status thresholds
+                callback_target = 3.0
+                if callback_pct <= callback_target:
+                    callback_status = "success"
+                elif callback_pct <= 7.0:
+                    callback_status = "warning"
+                else:
+                    callback_status = "danger"
+
                 employee_cards.append(
                     {
                         "employee_id": r.get("employee_id"),
@@ -659,13 +702,21 @@ def get_dashboard_kpis():
 
                         "completed_jobs_ytd": int(r.get("completed_jobs_ytd") or 0),
 
-                        # NEW: Avg ticket (service)
-                        "avg_ticket_service": avg_ticket_service,
-                        "avg_ticket_service_display": _format_currency(avg_ticket_service),
-                        "avg_ticket_service_status": "success" if avg_ticket_service >= avg_ticket_threshold else "danger",
-                        "service_invoice_count": int(r.get("service_invoice_count") or 0),
+                        # NEW: Avg ticket (overall)
+                        "avg_ticket_overall": avg_ticket_overall,
+                        "avg_ticket_overall_display": _format_currency(avg_ticket_overall),
+                        "avg_ticket_overall_status": "success" if avg_ticket_overall >= avg_ticket_threshold else "danger",
+                        "overall_invoice_count": int(r.get("overall_invoice_count") or 0),
+
+                        # NEW: Callback % (YTD)
+                        "callback_jobs_ytd": callback_jobs_ytd,
+                        "callback_pct_ytd": callback_pct,
+                        "callback_pct_display": f"{callback_pct:.1f}%",
+                        "callback_status": callback_status,
+                        "callback_target": callback_target,
                     }
                 )
+
 
 
         # -----------------------------------

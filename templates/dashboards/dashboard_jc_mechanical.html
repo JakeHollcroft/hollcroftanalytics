@@ -305,7 +305,8 @@
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">
     <h2 class="jc-employee-title">Technician KPI Cards</h2>
-    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket (Service, YTD)</div>
+<div class="jc-employee-subtitle">Completed Jobs + Avg Ticket (Overall, YTD) + Callback %</div>
+
   </div>
 
   <div class="jc-employee-grid">
@@ -338,13 +339,23 @@
   </div>
 
   <div class="jc-employee-kpi">
-    <div class="jc-employee-kpi-label">Avg Ticket (Service)</div>
-    <div class="jc-employee-kpi-value {{ 'is-good' if e.avg_ticket_service_status == 'success' else 'is-bad' }}">
-      {{ e.avg_ticket_service_display }}
+    <div class="jc-employee-kpi-label">Avg Ticket (Overall)</div>
+    <div class="jc-employee-kpi-value {{ 'is-good' if e.avg_ticket_overall_status == 'success' else 'is-bad' }}">
+      {{ e.avg_ticket_overall_display }}
     </div>
-    <div class="jc-employee-kpi-subnote">{{ e.service_invoice_count }} service invoices</div>
+    <div class="jc-employee-kpi-subnote">{{ e.overall_invoice_count }} invoices</div>
+  </div>
+
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Callback % (YTD)</div>
+    <div class="jc-employee-kpi-value
+      {{ 'is-good' if e.callback_status == 'success' else 'is-warn' if e.callback_status == 'warning' else 'is-bad' }}">
+      {{ e.callback_pct_display }}
+    </div>
+    <div class="jc-employee-kpi-subnote">{{ e.callback_jobs_ytd }} callback jobs</div>
   </div>
 </div>
+
 
         </article>
       {% endfor %}

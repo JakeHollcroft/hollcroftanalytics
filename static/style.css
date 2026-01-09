@@ -2446,9 +2446,11 @@ footer {
 /* KPI tiles inside each card */
 .jc-dash .jc-employee-kpis{
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
+.jc-dash .jc-employee-kpi-value.is-warn{ color: #f0ad4e; }
+
 
 .jc-dash .jc-employee-kpi{
   border-radius: 16px;
@@ -2491,6 +2493,16 @@ footer {
     flex-direction: column;
     align-items: flex-start;
   }
+  .jc-dash .jc-employee-kpis{
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 900px){
+  .jc-dash .jc-employee-kpis{
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 560px){
   .jc-dash .jc-employee-kpis{
     grid-template-columns: 1fr;
   }
