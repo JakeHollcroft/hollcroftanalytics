@@ -322,9 +322,13 @@
             {% endif %}
 
             <div class="jc-employee-meta">
-              <div class="jc-employee-name">{{ e.name }}</div>
-              <div class="jc-employee-role">{{ e.role }}</div>
-            </div>
+  <div class="jc-employee-name-row">
+    <div class="jc-employee-name">{{ e.name }}</div>
+    <span class="jc-employee-role-pill">{{ e.role }}</span>
+  </div>
+  <div class="jc-employee-role">Completed Jobs + Avg Ticket (Service)</div>
+</div>
+
           </div>
 
           <div class="jc-employee-kpis">
