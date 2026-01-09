@@ -608,10 +608,9 @@ def get_dashboard_kpis():
                 )
 
                 # Map to categories from tags
-                df_inv_jobs["category"] = df_inv_jobs.apply(
-                    lambda row: _map_category_from_tags(row.get("tags_norm", []), row.get("tags", [])),
-                    axis=1,
-                )
+                # Map to categories from tags (tags_norm is a normalized string)
+                df_inv_jobs["category"] = df_inv_jobs["tags_norm"].fillna("").astype(str).apply(_map_category_from_tags)
+
 
                 # Service-only categories (based on your current tag taxonomy)
                 service_categories = {"Residential demand service", "Commercial demand service"}
