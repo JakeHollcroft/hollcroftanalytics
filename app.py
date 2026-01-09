@@ -1,6 +1,6 @@
 # app.py
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, send_from_directory, url_for, flash, abort
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -288,6 +288,16 @@ def login():
         return redirect(url_for("login"))
 
     return render_template("login.html")
+
+@app.route("/robots.txt")
+def robots():
+    return send_from_directory("static", "robots.txt")
+
+@app.route("/wp-admin/<path:subpath>")
+@app.route("/wordpress/<path:subpath>")
+@app.route("/wp-includes/<path:subpath>")
+def block_wp(subpath):
+    abort(404)
 
 
 @app.route("/dashboard")
