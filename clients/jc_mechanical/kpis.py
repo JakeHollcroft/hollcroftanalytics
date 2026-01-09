@@ -46,6 +46,43 @@ def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     except Exception:
         pass
 
+     # job_employees (bridge table)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_employees (
+            job_id TEXT,
+            employee_id TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            mobile_number TEXT,
+            role TEXT,
+            avatar_url TEXT,
+            color_hex TEXT,
+            company_id TEXT,
+            company_name TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    # Backward-compatible schema upgrades for job_employees (safe if already exists)
+    for col, coltype in [
+        ("role", "TEXT"),
+        ("avatar_url", "TEXT"),
+        ("color_hex", "TEXT"),
+        ("updated_at", "TEXT"),
+        ("company_id", "TEXT"),
+        ("company_name", "TEXT"),
+        ("email", "TEXT"),
+        ("mobile_number", "TEXT"),
+        ("first_name", "TEXT"),
+        ("last_name", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE job_employees ADD COLUMN {col} {coltype}")
+        except Exception:
+            pass
+   
+
     # customers
     conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (
@@ -229,6 +266,7 @@ def get_dashboard_kpis():
 
         # Load data (safe even if first run or DB contention)
         df_jobs = _safe_df(conn, "SELECT * FROM jobs")
+        df_job_emps = _safe_df(conn, "SELECT * FROM job_employees")
         df_customers = _safe_df(conn, "SELECT * FROM customers")
         df_invoices = _safe_df(conn, "SELECT * FROM invoices")
 
@@ -252,7 +290,19 @@ def get_dashboard_kpis():
                 "tags": "object",
             },
         )
-
+        
+        df_job_emps = _ensure_columns(
+        df_job_emps,
+        {
+            "job_id": "object",
+            "employee_id": "object",
+            "first_name": "object",
+            "last_name": "object",
+            "role": "object",
+            "avatar_url": "object",
+            "color_hex": "object",
+        }
+    )
         df_customers = _ensure_columns(
             df_customers,
             {
@@ -460,6 +510,54 @@ def get_dashboard_kpis():
         # completed_at is UTC-aware datetime because we parsed with utc=True
         df_completed = df_completed[df_completed["completed_at"] >= start_of_year_utc].copy()
 
+                # -----------------------------------
+        # Employee KPI v1: Completed Jobs (YTD) per employee
+        # -----------------------------------
+        employee_cards = []
+
+        if not df_completed.empty and not df_job_emps.empty:
+            # Join completed jobs to assigned employees
+            df_emp_completed = df_completed[["job_id"]].merge(
+                df_job_emps,
+                how="inner",
+                on="job_id"
+            )
+
+            # Clean names
+            df_emp_completed["employee_name"] = (
+                df_emp_completed["first_name"].fillna("").astype(str).str.strip()
+                + " "
+                + df_emp_completed["last_name"].fillna("").astype(str).str.strip()
+            ).str.strip()
+
+            # Group
+            g = (
+                df_emp_completed.dropna(subset=["employee_id"])
+                .groupby(["employee_id", "employee_name"], dropna=False)
+                .agg(
+                    completed_jobs_ytd=("job_id", "nunique"),
+                    role=("role", "first"),
+                    avatar_url=("avatar_url", "first"),
+                    color_hex=("color_hex", "first"),
+                )
+                .reset_index()
+                .sort_values("completed_jobs_ytd", ascending=False)
+            )
+
+            # Build template-ready list
+            for _, r in g.iterrows():
+                employee_cards.append(
+                    {
+                        "employee_id": r.get("employee_id"),
+                        "name": r.get("employee_name") or "Unknown",
+                        "role": r.get("role") or "Technician",
+                        "avatar_url": r.get("avatar_url"),
+                        "color_hex": r.get("color_hex"),
+                        "completed_jobs_ytd": int(r.get("completed_jobs_ytd") or 0),
+                    }
+                )
+
+
         # -----------------------------------
         # First-Time Completion KPI
         # Completed jobs with exactly 1 appointment.
@@ -588,6 +686,9 @@ def get_dashboard_kpis():
             "dfo_count": dfo_count,
             "dfo_status_color": dfo_status_color,
             "dfo_monthly": dfo_monthly,
+
+            # Employee KPI
+            "employee_cards": employee_cards,
 
             # Meta
             "last_refresh": last_refresh_display,

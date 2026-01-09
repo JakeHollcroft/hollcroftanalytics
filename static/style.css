@@ -2318,3 +2318,106 @@ footer {
     align-items: center;
     gap: 0.5rem;
 }
+
+/* -----------------------------
+   Employee cards
+------------------------------ */
+.jc-dash .jc-employee-section{
+  max-width: 1300px;
+  margin: 0 auto 30px;
+  padding: 0 20px;
+}
+
+.jc-dash .jc-employee-header{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0 14px;
+}
+
+.jc-dash .jc-employee-title{
+  font-size: 1.15rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.jc-dash .jc-employee-subtitle{
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 0.95rem;
+}
+
+.jc-dash .jc-employee-grid{
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.jc-dash .jc-employee-card{
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.jc-dash .jc-employee-top{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.jc-dash .jc-employee-avatar{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(226, 232, 240, 0.18);
+}
+
+.jc-dash .jc-employee-avatar-fallback{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
+  font-weight: 700;
+}
+
+.jc-dash .jc-employee-name{
+  font-size: 1.02rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.jc-dash .jc-employee-role{
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.75);
+  margin-top: 2px;
+}
+
+.jc-dash .jc-employee-kpis{
+  display: grid;
+  gap: 10px;
+}
+
+.jc-dash .jc-employee-kpi{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(226, 232, 240, 0.12);
+}
+
+.jc-dash .jc-employee-kpi-label{
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.92rem;
+}
+
+.jc-dash .jc-employee-kpi-value{
+  font-size: 1.15rem;
+  font-weight: 750;
+}

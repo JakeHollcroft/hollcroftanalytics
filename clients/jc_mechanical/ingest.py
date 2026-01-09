@@ -188,6 +188,38 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection) -> None:
     except Exception:
         pass
 
+        # -----------------------------
+    # job_employees (bridge table)
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_employees (
+            job_id TEXT,
+            employee_id TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            mobile_number TEXT,
+            role TEXT,
+            avatar_url TEXT,
+            color_hex TEXT,
+            company_id TEXT,
+            company_name TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+    for col, coltype in [
+    ("role", "TEXT"),
+    ("avatar_url", "TEXT"),
+    ("color_hex", "TEXT"),
+    ("updated_at", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE job_employees ADD COLUMN {col} {coltype}")
+        except Exception:
+            pass
+
     
     conn.execute(
         """
@@ -390,11 +422,15 @@ def appointment_count_from_job(job_obj):
     return 0
 
 def flatten_jobs(jobs):
-    rows = []
+    job_rows = []
+    emp_rows = []
+
     for job in jobs:
-        rows.append(
+        job_id = str(job.get("id")) if job.get("id") is not None else None
+
+        job_rows.append(
             {
-                "job_id": str(job.get("id")) if job.get("id") is not None else None,
+                "job_id": job_id,
                 "invoice_number": job.get("invoice_number"),
                 "description": job.get("description"),
                 "work_status": job.get("work_status"),
@@ -410,7 +446,31 @@ def flatten_jobs(jobs):
                 "tags": ",".join(job.get("tags", [])) if job.get("tags") else None,
             }
         )
-    return pd.DataFrame(rows)
+
+        # Bridge rows (job -> assigned employees)
+        for emp in (job.get("assigned_employees") or []):
+            emp_rows.append(
+                {
+                    "job_id": job_id,
+                    "employee_id": str(emp.get("id")) if emp.get("id") is not None else None,
+                    "first_name": emp.get("first_name"),
+                    "last_name": emp.get("last_name"),
+                    "email": emp.get("email"),
+                    "mobile_number": emp.get("mobile_number"),
+                    "role": emp.get("role"),
+                    "avatar_url": emp.get("avatar_url"),
+                    "color_hex": emp.get("color_hex"),
+                    "company_id": str(job.get("company_id")) if job.get("company_id") is not None else None,
+                    "company_name": job.get("company_name"),
+                    "updated_at": job.get("updated_at"),
+                }
+            )
+
+    df_jobs = pd.DataFrame(job_rows)
+    df_job_emps = pd.DataFrame(emp_rows)
+
+    return df_jobs, df_job_emps
+
 
 def flatten_customers(customers):
     rows = []
@@ -506,6 +566,49 @@ def upsert_jobs(conn: duckdb.DuckDBPyConnection, df_jobs: pd.DataFrame):
         """
     )
     print(f"[{_ts()}] RUN {RUN_ID} Upserted jobs: {len(df_jobs)} incoming rows.")
+
+def upsert_job_employees(conn: duckdb.DuckDBPyConnection, df_job_emps: pd.DataFrame):
+    if df_job_emps.empty:
+        print(f"[{_ts()}] RUN {RUN_ID} No job_employees rows to upsert.")
+        return
+
+    # Drop null keys
+    df_job_emps = df_job_emps.dropna(subset=["job_id", "employee_id"]).copy()
+
+    # De-dupe within this batch (same job/employee can appear more than once)
+    df_job_emps = df_job_emps.drop_duplicates(subset=["job_id", "employee_id"])
+
+    _create_temp_incoming(conn, "job_employees_incoming", df_job_emps)
+
+    conn.execute(
+        """
+        MERGE INTO job_employees AS t
+        USING job_employees_incoming AS s
+        ON t.job_id = s.job_id AND t.employee_id = s.employee_id
+        WHEN MATCHED THEN UPDATE SET
+            first_name = s.first_name,
+            last_name = s.last_name,
+            email = s.email,
+            mobile_number = s.mobile_number,
+            role = s.role,
+            avatar_url = s.avatar_url,
+            color_hex = s.color_hex,
+            company_id = s.company_id,
+            company_name = s.company_name,
+            updated_at = s.updated_at
+        WHEN NOT MATCHED THEN INSERT (
+            job_id, employee_id, first_name, last_name, email, mobile_number,
+            role, avatar_url, color_hex, company_id, company_name, updated_at
+        )
+        VALUES (
+            s.job_id, s.employee_id, s.first_name, s.last_name, s.email, s.mobile_number,
+            s.role, s.avatar_url, s.color_hex, s.company_id, s.company_name, s.updated_at
+        )
+        """
+    )
+
+    print(f"[{_ts()}] RUN {RUN_ID} Upserted job_employees: {len(df_job_emps)} incoming rows.")
+
 
 def upsert_customers(conn: duckdb.DuckDBPyConnection, df_customers: pd.DataFrame):
     if df_customers.empty:
@@ -623,7 +726,7 @@ def run_ingestion(min_interval_seconds: int = 3600):
         else:
             jobs_data = fetch_all_recent(BASE_URL_JOBS, key_name="jobs", since_iso=since_iso, page_size=100)
 
-        df_jobs = flatten_jobs(jobs_data)
+        df_jobs, df_job_emps = flatten_jobs(jobs_data)
 
         # Appointment counts (detail calls) only for recently completed jobs
         print(f"[{_ts()}] RUN {RUN_ID} Fetching appointment counts for completed jobs (limited window)...")
@@ -671,6 +774,10 @@ def run_ingestion(min_interval_seconds: int = 3600):
                     time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
             df_jobs["num_appointments"] = df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
+                    # Upsert Jobs + Job Employees
+            upsert_jobs(conn, df_jobs)
+            upsert_job_employees(conn, df_job_emps)
+
 
         # Customers
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Customers...")
@@ -689,7 +796,6 @@ def run_ingestion(min_interval_seconds: int = 3600):
         df_invoices = flatten_invoices(invoices_data)
 
         # Upsert into main tables (no drops)
-        upsert_jobs(conn, df_jobs)
         upsert_customers(conn, df_customers)
         upsert_invoices(conn, df_invoices)
 
