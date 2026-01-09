@@ -548,12 +548,12 @@ def get_dashboard_kpis():
         df_completed = df_completed[df_completed["completed_at"] >= start_of_year_utc].copy()
 
                 # -----------------------------------
-        # Employee KPI v1: Completed Jobs (YTD) per employee
+        # Employee KPIs: Completed Jobs (YTD) + Avg Ticket (Service) per tech
         # -----------------------------------
         employee_cards = []
 
         if not df_completed.empty and not df_job_emps.empty:
-            # Join completed jobs to assigned employees
+            # Join completed jobs to assigned employees (for completed jobs count)
             df_emp_completed = df_completed[["job_id"]].merge(
                 df_job_emps,
                 how="inner",
@@ -567,7 +567,7 @@ def get_dashboard_kpis():
                 + df_emp_completed["last_name"].fillna("").astype(str).str.strip()
             ).str.strip()
 
-            # Group
+            # Base group: completed jobs per tech
             g = (
                 df_emp_completed.dropna(subset=["employee_id"])
                 .groupby(["employee_id", "employee_name"], dropna=False)
@@ -581,8 +581,75 @@ def get_dashboard_kpis():
                 .sort_values("completed_jobs_ytd", ascending=False)
             )
 
+            # -----------------------------
+            # Avg ticket (service only) per tech
+            # Uses invoices (YTD) + jobs.tags -> category, filters to demand service categories
+            # -----------------------------
+            avg_ticket_threshold = 450.0  # same target as overall ATV
+
+            df_emp_service = pd.DataFrame(columns=["employee_id", "avg_ticket_service", "service_invoice_count"])
+
+            if not df_rev.empty:
+                # df_rev is already filtered to YTD + allowed revenue statuses earlier in your file
+                # We need job tags to classify service categories, so join invoices -> jobs
+                inv_cols = []
+                if "invoice_id" in df_rev.columns:
+                    inv_cols.append("invoice_id")
+                else:
+                    # fallback: if invoice_id isn't present for some reason, we can still count rows
+                    df_rev = df_rev.copy()
+                    df_rev["invoice_id"] = df_rev.index.astype(str)
+                    inv_cols.append("invoice_id")
+
+                df_inv_jobs = df_rev[["job_id", "amount_dollars"] + inv_cols].merge(
+                    df_jobs[["job_id", "tags_norm", "tags"]].copy(),
+                    how="left",
+                    on="job_id",
+                )
+
+                # Map to categories from tags
+                df_inv_jobs["category"] = df_inv_jobs.apply(
+                    lambda row: _map_category_from_tags(row.get("tags_norm", []), row.get("tags", [])),
+                    axis=1,
+                )
+
+                # Service-only categories (based on your current tag taxonomy)
+                service_categories = {"Residential demand service", "Commercial demand service"}
+                df_service_inv = df_inv_jobs[df_inv_jobs["category"].isin(service_categories)].copy()
+
+                if not df_service_inv.empty:
+                    # Attribute invoices to employees via job_employees
+                    df_service_emp = df_service_inv.merge(
+                        df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
+                        how="inner",
+                        on="job_id",
+                    )
+
+                    df_emp_service = (
+                        df_service_emp.groupby("employee_id", dropna=False)
+                        .agg(
+                            service_revenue=("amount_dollars", "sum"),
+                            service_invoice_count=("invoice_id", "nunique"),
+                        )
+                        .reset_index()
+                    )
+
+                    df_emp_service["avg_ticket_service"] = df_emp_service.apply(
+                        lambda r: (float(r["service_revenue"]) / float(r["service_invoice_count"]))
+                        if float(r["service_invoice_count"]) > 0 else 0.0,
+                        axis=1,
+                    )
+
+                    df_emp_service = df_emp_service[["employee_id", "avg_ticket_service", "service_invoice_count"]]
+
+            # Merge service avg ticket onto the tech grouping
+            g = g.merge(df_emp_service, how="left", on="employee_id")
+            g["avg_ticket_service"] = g["avg_ticket_service"].fillna(0.0)
+            g["service_invoice_count"] = g["service_invoice_count"].fillna(0).astype(int)
+
             # Build template-ready list
             for _, r in g.iterrows():
+                avg_ticket_service = float(r.get("avg_ticket_service") or 0.0)
                 employee_cards.append(
                     {
                         "employee_id": r.get("employee_id"),
@@ -590,7 +657,14 @@ def get_dashboard_kpis():
                         "role": r.get("role") or "Technician",
                         "avatar_url": r.get("avatar_url"),
                         "color_hex": r.get("color_hex"),
+
                         "completed_jobs_ytd": int(r.get("completed_jobs_ytd") or 0),
+
+                        # NEW: Avg ticket (service)
+                        "avg_ticket_service": avg_ticket_service,
+                        "avg_ticket_service_display": _format_currency(avg_ticket_service),
+                        "avg_ticket_service_status": "success" if avg_ticket_service >= avg_ticket_threshold else "danger",
+                        "service_invoice_count": int(r.get("service_invoice_count") or 0),
                     }
                 )
 

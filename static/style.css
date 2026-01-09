@@ -2415,4 +2415,39 @@ footer {
 .jc-dash .jc-employee-kpi-value{
   font-size: 1.15rem;
   font-weight: 750;
+}/* -------------------------------------------------
+   EMPLOYEE KPI CARDS: 2 KPI blocks per card
+-------------------------------------------------- */
+
+.jc-employee-kpis{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.jc-employee-kpi{
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.jc-employee-kpi-label{
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 6px;
+}
+
+.jc-employee-kpi-value{
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.jc-employee-kpi-value.is-good{ color: #28a745; }
+.jc-employee-kpi-value.is-bad{ color: #dc3545; }
+
+.jc-employee-kpi-subnote{
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.55);
 }

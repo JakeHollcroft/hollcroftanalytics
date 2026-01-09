@@ -305,7 +305,7 @@
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">
     <h2 class="jc-employee-title">Technician KPI Cards</h2>
-    <div class="jc-employee-subtitle">Completed Jobs (YTD)</div>
+    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket (Service, YTD)</div>
   </div>
 
   <div class="jc-employee-grid">
@@ -328,11 +328,20 @@
           </div>
 
           <div class="jc-employee-kpis">
-            <div class="jc-employee-kpi">
-              <div class="jc-employee-kpi-label">Completed Jobs (YTD)</div>
-              <div class="jc-employee-kpi-value">{{ e.completed_jobs_ytd }}</div>
-            </div>
-          </div>
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Completed Jobs (YTD)</div>
+    <div class="jc-employee-kpi-value">{{ e.completed_jobs_ytd }}</div>
+  </div>
+
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Avg Ticket (Service)</div>
+    <div class="jc-employee-kpi-value {{ 'is-good' if e.avg_ticket_service_status == 'success' else 'is-bad' }}">
+      {{ e.avg_ticket_service_display }}
+    </div>
+    <div class="jc-employee-kpi-subnote">{{ e.service_invoice_count }} service invoices</div>
+  </div>
+</div>
+
         </article>
       {% endfor %}
     {% else %}
