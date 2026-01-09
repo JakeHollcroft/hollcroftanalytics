@@ -1455,16 +1455,11 @@ footer {
     line-height: 1.5;
 }
 
-/* Revenue Bars */
-.jc-dash .jc-revenue-bars {
-    display: grid;
-    gap: 12px;
-    margin-top: 18px;
-}
-
+/* Revenue Bars - improvements */
 .jc-dash .jc-revenue-bar-row {
     display: grid;
-    grid-template-columns: 140px 1fr 130px;
+    /* wider label column; value still fixed; middle grows */
+    grid-template-columns: minmax(200px, 280px) 1fr 130px;
     gap: 14px;
     align-items: center;
 }
@@ -1473,33 +1468,33 @@ footer {
     font-size: 0.92rem;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.94);
+
+    /* keep single-line but make tooltip usable */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.jc-dash .jc-revenue-bar-track {
-    height: 28px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(226, 232, 240, 0.14);
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
+/* allow percent label inside bar */
 .jc-dash .jc-revenue-bar-fill {
     height: 100%;
+    position: relative; /* NEW */
+    display: flex;      /* NEW */
+    align-items: center;/* NEW */
+    justify-content: flex-end; /* NEW */
+    padding-right: 10px; /* NEW */
+
     background: linear-gradient(90deg, rgba(20, 184, 166, 0.9), rgba(42, 167, 224, 0.9));
     box-shadow: 0 2px 6px rgba(20, 184, 166, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.jc-dash .jc-revenue-bar-value {
-    font-size: 1.05rem;
+.jc-dash .jc-revenue-bar-pct {
+    font-size: 0.85rem;
     font-weight: 900;
-    color: rgba(255, 255, 255, 0.98);
-    text-align: right;
-    letter-spacing: -0.2px;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+    pointer-events: none;
 }
 
 .jc-dash .jc-empty-state {

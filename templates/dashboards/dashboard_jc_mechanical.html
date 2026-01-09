@@ -105,22 +105,33 @@
         </div>
         
         <div class="jc-revenue-bars">
-            {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
-                {% for r in revenue_breakdown_ytd %}
-                <div class="jc-revenue-bar-row">
-                    <div class="jc-revenue-bar-label">{{ r.category }}</div>
-                    <div class="jc-revenue-bar-track">
-                        <div class="jc-revenue-bar-fill" data-width="{{ (loop.index / revenue_breakdown_ytd|length * 100)|int }}"></div>
-                    </div>
-                    <div class="jc-revenue-bar-value">{{ r.revenue_display }}</div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="jc-empty-state">
-                    <p>No revenue data available</p>
-                </div>
-            {% endif %}
+  {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
+    {% for r in revenue_breakdown_ytd %}
+      <div class="jc-revenue-bar-row">
+        <!-- NEW: tooltip shows full text -->
+        <div class="jc-revenue-bar-label" title="{{ r.category }}">{{ r.category }}</div>
+
+        <div class="jc-revenue-bar-track" aria-label="Share of total revenue">
+          <!-- NEW: width is now meaningful -->
+          <div class="jc-revenue-bar-fill" data-width="{{ r.pct_of_total|round(0)|int }}">
+            <span class="jc-revenue-bar-pct">{{ r.pct_of_total_display }}</span>
+          </div>
         </div>
+
+        <div class="jc-revenue-bar-value">{{ r.revenue_display }}</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="jc-empty-state">
+      <p>No revenue data available</p>
+    </div>
+  {% endif %}
+</div>
+
+<div class="jc-kpi-footer">
+  <span class="jc-kpi-note">Bar length = % of total YTD revenue (categories from job tags)</span>
+</div>
+
         
         <div class="jc-kpi-footer">
             <span class="jc-kpi-note">Categories from job tags</span>
