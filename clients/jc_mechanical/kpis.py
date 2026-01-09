@@ -475,17 +475,8 @@ def get_dashboard_kpis():
         )
 
         revenue_breakdown = []
-        if not breakdown.empty:
-            for _, row in breakdown.iterrows():
-                revenue_breakdown.append(
-                    {
-                        "category": str(row["category"]),
-                        "revenue": float(row["revenue"]),
-                        "revenue_display": _format_currency(row["revenue"]),
-                        
-                    }
-                )
-        
+
+
         if not breakdown.empty:
             total_breakdown = float(breakdown["revenue"].sum())
             max_revenue = float(breakdown["revenue"].max()) if len(breakdown) else 0.0
@@ -501,12 +492,12 @@ def get_dashboard_kpis():
                         "revenue": rev,
                         "revenue_display": _format_currency(rev),
 
-                        # NEW: bar math + display helpers
-                        "pct_of_total": pct_of_total,      # 0-100, bar meaning: share of total
-                        "pct_of_max": pct_of_max,          # 0-100, optional alt scaling
+                        "pct_of_total": pct_of_total,
+                        "pct_of_max": pct_of_max,
                         "pct_of_total_display": f"{pct_of_total:.0f}%",
                     }
                 )
+
 
         total_revenue_display = _format_currency(total_revenue_ytd)
 
