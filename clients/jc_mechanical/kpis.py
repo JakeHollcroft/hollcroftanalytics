@@ -475,26 +475,49 @@ def get_dashboard_kpis():
         )
 
         revenue_breakdown = []
-
-
+        
         if not breakdown.empty:
             total_breakdown = float(breakdown["revenue"].sum())
-            max_revenue = float(breakdown["revenue"].max()) if len(breakdown) else 0.0
+            if total_breakdown <= 0:
+                total_breakdown = 0.0
 
+            # Build base rows with raw pct
+            rows = []
             for _, row in breakdown.iterrows():
                 rev = float(row["revenue"])
-                pct_of_total = (rev / total_breakdown * 100.0) if total_breakdown > 0 else 0.0
-                pct_of_max = (rev / max_revenue * 100.0) if max_revenue > 0 else 0.0
+                category = str(row["category"]).strip() or "Other / Unclassified"
+                pct_raw = (rev / total_breakdown * 100.0) if total_breakdown > 0 else 0.0
+                rows.append({"category": category, "revenue": rev, "pct_raw": pct_raw})
+
+            # Largest remainder: ints that sum to 100
+            floors = [int(r["pct_raw"]) for r in rows]  # floor
+            remainder = 100 - sum(floors)
+
+            fracs = [(i, rows[i]["pct_raw"] - floors[i]) for i in range(len(rows))]
+            fracs.sort(key=lambda x: x[1], reverse=True)
+
+            pct_ints = floors[:]
+            for j in range(max(0, remainder)):
+                pct_ints[fracs[j % len(fracs)][0]] += 1
+
+            # Optional: max-based scaling for bar widths (if you ever want it)
+            max_revenue = max((r["revenue"] for r in rows), default=0.0)
+
+            # Final list for template
+            for r, pct_int in zip(rows, pct_ints):
+                pct_of_total = float(pct_int)  # this is now an integer percent that sums to 100
+
+                pct_of_max = (r["revenue"] / max_revenue * 100.0) if max_revenue > 0 else 0.0
+                pct_of_max = max(0.0, min(100.0, pct_of_max))
 
                 revenue_breakdown.append(
                     {
-                        "category": str(row["category"]),
-                        "revenue": rev,
-                        "revenue_display": _format_currency(rev),
-
-                        "pct_of_total": pct_of_total,
+                        "category": r["category"],
+                        "revenue": r["revenue"],
+                        "revenue_display": _format_currency(r["revenue"]),
+                        "pct_of_total": pct_of_total,                 # bar width (0-100), sums to 100 overall
                         "pct_of_max": pct_of_max,
-                        "pct_of_total_display": f"{pct_of_total:.0f}%",
+                        "pct_of_total_display": f"{int(pct_of_total)}%",
                     }
                 )
 
