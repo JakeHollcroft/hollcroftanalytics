@@ -305,7 +305,7 @@
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">
     <h2 class="jc-employee-title">Technician KPI Cards</h2>
-    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket (Service, YTD)</div>
+    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket + Callback + Profit/Hr (YTD)</div>
   </div>
 
   <div class="jc-employee-grid">
@@ -328,25 +328,56 @@
           </div>
 
           <div class="jc-employee-kpis">
-  <div class="jc-employee-kpi">
-    <div class="jc-employee-kpi-label">Completed Jobs (YTD)</div>
-    <div class="jc-employee-kpi-value">{{ e.completed_jobs_ytd }}</div>
-  </div>
 
-  <div class="jc-employee-kpi">
-    <div class="jc-employee-kpi-label">Avg Ticket (Service)</div>
-    <div class="jc-employee-kpi-value {{ 'is-good' if e.avg_ticket_service_status == 'success' else 'is-bad' }}">
-      {{ e.avg_ticket_service_display }}
-    </div>
-    <div class="jc-employee-kpi-subnote">{{ e.service_invoice_count }} service invoices</div>
-  </div>
-</div>
+            <!-- Completed Jobs -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">Completed Jobs (YTD)</div>
+              <div class="jc-employee-kpi-value">{{ e.completed_jobs_ytd|default(0) }}</div>
+              <div class="jc-employee-kpi-sub">Completed + Unrated</div>
+            </div>
 
+            <!-- Avg Ticket (Overall) -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">Avg Ticket (Overall)</div>
+              <div class="jc-employee-kpi-value jc-status-{{ e.avg_ticket_overall_status|default('warning') }}">
+                {{ e.avg_ticket_overall_display|default('$0') }}
+              </div>
+              <div class="jc-employee-kpi-sub">{{ e.overall_invoice_count|default(0) }} invoices</div>
+            </div>
+
+            <!-- Avg Ticket (Service) -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">Avg Ticket (Service)</div>
+              <div class="jc-employee-kpi-value jc-status-{{ e.avg_ticket_service_status|default('warning') }}">
+                {{ e.avg_ticket_service_display|default('$0') }}
+              </div>
+              <div class="jc-employee-kpi-sub">{{ e.service_invoice_count|default(0) }} service invoices</div>
+            </div>
+
+            <!-- Callback % (if present) -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">Callback Rate (YTD)</div>
+              <div class="jc-employee-kpi-value jc-status-{{ e.callback_status|default('warning') }}">
+                {{ e.callback_pct_display|default('0%') }}
+              </div>
+              <div class="jc-employee-kpi-sub">{{ e.callback_jobs|default(0) }} callbacks</div>
+            </div>
+
+            <!-- Gross Profit per Hour (if present) -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">Gross Profit / Hour (YTD)</div>
+              <div class="jc-employee-kpi-value jc-status-{{ e.gross_profit_per_hour_status|default('warning') }}">
+                {{ e.gross_profit_per_hour_ytd_display|default('$0/hr') }}
+              </div>
+              <div class="jc-employee-kpi-sub">Labor + parts cost included</div>
+            </div>
+
+          </div>
         </article>
       {% endfor %}
     {% else %}
       <div class="jc-empty-state">
-        <p>No employee assignment data yet. Run ingestion after adding job_employees.</p>
+        <p>No employee KPI data yet. Run ingestion and confirm jobs have assigned employees.</p>
       </div>
     {% endif %}
   </div>

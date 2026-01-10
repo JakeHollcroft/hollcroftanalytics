@@ -2313,112 +2313,124 @@ footer {
     align-items: center;
     gap: 0.5rem;
 }
-
 /* -----------------------------
-   Employee cards
+   Technician KPI Cards (Employee Cards)
 ------------------------------ */
-.jc-dash .jc-employee-section{
-  max-width: 1300px;
-  margin: 0 auto 30px;
-  padding: 0 20px;
+
+.jc-employee-section {
+  margin-top: 28px;
 }
 
-.jc-dash .jc-employee-header{
+.jc-employee-header {
   display: flex;
-  align-items: baseline;
   justify-content: space-between;
+  align-items: baseline;
   gap: 16px;
-  margin: 10px 0 14px;
+  margin-bottom: 14px;
 }
 
-.jc-dash .jc-employee-title{
-  font-size: 1.15rem;
-  font-weight: 650;
+.jc-employee-title {
+  font-size: 1.4rem;
+  font-weight: 700;
   margin: 0;
 }
 
-.jc-dash .jc-employee-subtitle{
-  color: rgba(226, 232, 240, 0.75);
+.jc-employee-subtitle {
+  color: rgba(255,255,255,0.7);
   font-size: 0.95rem;
 }
 
-.jc-dash .jc-employee-grid{
+.jc-employee-grid {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(4, minmax(260px, 1fr));
+  gap: 18px;
 }
 
-.jc-dash .jc-employee-card{
-  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
-  border: 1px solid rgba(226, 232, 240, 0.18);
-  border-radius: 20px;
+@media (max-width: 1200px) {
+  .jc-employee-grid { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .jc-employee-grid { grid-template-columns: 1fr; }
+}
+
+.jc-employee-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 22px;
   padding: 18px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+  backdrop-filter: blur(10px);
 }
 
-.jc-dash .jc-employee-top{
+.jc-employee-top {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
 }
 
-.jc-dash .jc-employee-avatar{
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+.jc-employee-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(226, 232, 240, 0.18);
+  border: 2px solid rgba(255,255,255,0.14);
 }
 
-.jc-dash .jc-employee-avatar-fallback{
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.92);
+.jc-employee-avatar-fallback {
+  display: grid;
+  place-items: center;
   font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.08);
 }
 
-.jc-dash .jc-employee-name{
-  font-size: 1.02rem;
-  font-weight: 650;
-  line-height: 1.2;
+.jc-employee-name {
+  font-size: 1.15rem;
+  font-weight: 750;
+  line-height: 1.1;
 }
 
-.jc-dash .jc-employee-role{
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.75);
+.jc-employee-role {
+  color: rgba(255,255,255,0.70);
   margin-top: 2px;
 }
 
-.jc-dash .jc-employee-kpis{
+.jc-employee-kpis {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
-.jc-dash .jc-employee-kpi{
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 12px 12px;
+.jc-employee-kpi {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 14px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(226, 232, 240, 0.12);
+  padding: 12px 12px;
 }
 
-.jc-dash .jc-employee-kpi-label{
-  color: rgba(226, 232, 240, 0.78);
+.jc-employee-kpi-label {
+  color: rgba(255,255,255,0.72);
   font-size: 0.92rem;
+  margin-bottom: 6px;
 }
 
-.jc-dash .jc-employee-kpi-value{
-  font-size: 1.15rem;
-  font-weight: 750;
+.jc-employee-kpi-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  line-height: 1.1;
 }
 
+.jc-employee-kpi-sub {
+  margin-top: 6px;
+  color: rgba(255,255,255,0.55);
+  font-size: 0.85rem;
+}
 
-/* Status text colors (used for KPI values) */
+/* Status text colors */
 .jc-status-success { color: #28a745; }
 .jc-status-warning { color: #ffc107; }
 .jc-status-danger  { color: #dc3545; }
+
