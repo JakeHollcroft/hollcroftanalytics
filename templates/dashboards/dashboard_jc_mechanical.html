@@ -305,7 +305,7 @@
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">
     <h2 class="jc-employee-title">Technician KPI Cards</h2>
-    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket + Callback + Profit/Hr (YTD)</div>
+    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket + Callback + Gross Profit/Hr (YTD)</div>
   </div>
 
   <div class="jc-employee-grid">
@@ -345,28 +345,19 @@
               <div class="jc-employee-kpi-sub">{{ e.overall_invoice_count|default(0) }} invoices</div>
             </div>
 
-            <!-- Avg Ticket (Service) -->
-            <div class="jc-employee-kpi">
-              <div class="jc-employee-kpi-label">Avg Ticket (Service)</div>
-              <div class="jc-employee-kpi-value jc-status-{{ e.avg_ticket_service_status|default('warning') }}">
-                {{ e.avg_ticket_service_display|default('$0') }}
-              </div>
-              <div class="jc-employee-kpi-sub">{{ e.service_invoice_count|default(0) }} service invoices</div>
-            </div>
-
             <!-- Callback % (if present) -->
             <div class="jc-employee-kpi">
               <div class="jc-employee-kpi-label">Callback Rate (YTD)</div>
               <div class="jc-employee-kpi-value jc-status-{{ e.callback_status|default('warning') }}">
                 {{ e.callback_pct_display|default('0%') }}
               </div>
-              <div class="jc-employee-kpi-sub">{{ e.callback_jobs|default(0) }} callbacks</div>
+              <div class="jc-employee-kpi-sub">{{ e.callback_jobs_ytd|default(0) }} callbacks</div>
             </div>
 
             <!-- Gross Profit per Hour (if present) -->
             <div class="jc-employee-kpi">
               <div class="jc-employee-kpi-label">Gross Profit / Hour (YTD)</div>
-              <div class="jc-employee-kpi-value jc-status-{{ e.gross_profit_per_hour_status|default('warning') }}">
+              <div class="jc-employee-kpi-value jc-status-{{ e.gp_per_hour_status|default('warning') }}">
                 {{ e.gross_profit_per_hour_ytd_display|default('$0/hr') }}
               </div>
               <div class="jc-employee-kpi-sub">Labor + parts cost included</div>
