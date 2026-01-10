@@ -5,7 +5,6 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 import pandas as pd
-import re
 
 PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
@@ -764,80 +763,36 @@ def get_dashboard_kpis():
                 gp_per_hour_target = 150.0
                 labor_cost_per_job = 525.0  # JC rule
 
-                # Optional: price-book durations (hours) keyed by normalized invoice_item name.
-                # Fill this in as you standardize line-item naming. Anything not matched falls back to appointment hours.
-                                # -------------------------------------------------------------------------
-                # Price book lookups (optional)
-                # -------------------------------------------------------------------------
-                # We use price book data to estimate labor durations (hours) when possible,
-                # and to backfill missing material costs. If the tables don't exist yet,
-                # the KPI still runs (it will fall back to appointment hours + unit_cost).
-                def _norm_item_name(x: str) -> str:
-                    if x is None:
+                # Optional: price-book durations (hours) keyed by normalized service name.
+                # If the table doesn't exist yet (or duration is missing), we fall back to appointment hours.
+                PRICEBOOK_DURATION_HOURS: dict[str, float] = {}
+                try:
+                    if _table_exists(conn, "pricebook_services"):
+                        df_pb = conn.execute(
+                            "SELECT name, duration FROM pricebook_services WHERE duration IS NOT NULL"
+                        ).df()
+                        if not df_pb.empty:
+                            df_pb["name_norm"] = df_pb["name"].astype(str).map(_norm_item_name)
+                            # duration from HCP is minutes (int). Convert -> hours.
+                            df_pb["dur_hours"] = pd.to_numeric(df_pb["duration"], errors="coerce").fillna(0.0) / 60.0
+                            df_pb = df_pb[(df_pb["name_norm"] != "") & (df_pb["dur_hours"] > 0)].copy()
+                            # If duplicates exist, keep the max duration as a conservative estimate.
+                            PRICEBOOK_DURATION_HOURS = (
+                                df_pb.groupby("name_norm")["dur_hours"].max().to_dict()
+                            )
+                except Exception:
+                    PRICEBOOK_DURATION_HOURS = {}
+
+                def _norm_item_name(x) -> str:
+                    if x is None or (isinstance(x, float) and pd.isna(x)):
                         return ""
-                    x = str(x).strip().lower()
-                    # remove punctuation, collapse whitespace
-                    x = re.sub(r"[^a-z0-9\s]+", " ", x)
-                    x = re.sub(r"\s+", " ", x).strip()
-                    return x
-
-                def _load_pricebook_maps(conn) -> tuple[dict[str, float], dict[str, float]]:
-                    """Return (service_name->duration_hours, material_name->unit_cost_cents)."""
-                    service_duration_hours: dict[str, float] = {}
-                    material_cost_cents: dict[str, float] = {}
-
-                    try:
-                        df_pb_services = conn.execute("""
-                            SELECT name, duration
-                            FROM pricebook_services
-                        """).df()
-                        if not df_pb_services.empty:
-                            df_pb_services["name_norm"] = df_pb_services["name"].map(_norm_item_name)
-                            # duration is minutes in HCP price book
-                            df_pb_services["duration_hours"] = pd.to_numeric(df_pb_services["duration"], errors="coerce").fillna(0) / 60.0
-                            for r in df_pb_services.itertuples(index=False):
-                                if r.name_norm and r.duration_hours and r.duration_hours > 0:
-                                    # keep the max duration if duplicates exist
-                                    service_duration_hours[r.name_norm] = max(service_duration_hours.get(r.name_norm, 0.0), float(r.duration_hours))
-                    except Exception:
-                        pass
-
-                    try:
-                        df_pb_mat = conn.execute("""
-                            SELECT name, cost
-                            FROM pricebook_materials
-                        """).df()
-                        if not df_pb_mat.empty:
-                            df_pb_mat["name_norm"] = df_pb_mat["name"].map(_norm_item_name)
-                            # cost comes in cents from API ingest (or dollars depending on ingest). We treat as cents.
-                            df_pb_mat["cost_cents"] = pd.to_numeric(df_pb_mat["cost"], errors="coerce").fillna(0)
-                            for r in df_pb_mat.itertuples(index=False):
-                                if r.name_norm and r.cost_cents and r.cost_cents > 0:
-                                    material_cost_cents[r.name_norm] = max(material_cost_cents.get(r.name_norm, 0.0), float(r.cost_cents))
-                    except Exception:
-                        pass
-
-                    return service_duration_hours, material_cost_cents
-
-                # -------------------------------------------------------------------------
-                # Price book lookups (optional)
-                # -------------------------------------------------------------------------
-                # We use price book data to estimate labor durations (hours) when possible,
-                # and to backfill missing material costs. If the tables don't exist yet,
-                # the KPI still runs (it will fall back to appointment hours + unit_cost).
-                def _norm_item_name(x: str) -> str:
-                    if x is None:
-                        return ""
-                    x = str(x).strip().lower()
-                    x = re.sub(r"[^a-z0-9\s]+", " ", x)
-                    x = re.sub(r"\s+", " ", x).strip()
-                    return x
-
-                service_duration_hours_map, material_cost_cents_map = _load_pricebook_maps(conn)
+                    return str(x).strip().lower()
 
                 def _item_duration_hours(name: str) -> float:
                     key = _norm_item_name(name)
-                    return float(service_duration_hours_map.get(key, 0.0))                    # exact match
+                    if not key:
+                        return 0.0
+                    # exact match
                     if key in PRICEBOOK_DURATION_HOURS:
                         return float(PRICEBOOK_DURATION_HOURS[key])
                     # substring match (so "Capacitor - 45/5" can match "capacitor")
@@ -857,49 +812,38 @@ def get_dashboard_kpis():
                         .rename(columns={"amount_dollars": "job_revenue"})
                     )
 
-                    # Parts cost by job using invoice_items
+                    # Parts cost by job using invoice_items (materials only)
                     df_items = df_invoice_items.copy()
+                    df_items["type"] = df_items.get("type", "").astype(str).str.lower().str.strip()
+                    df_items = df_items[df_items["type"] == "material"].copy()
 
-                    # Quantity: stored in hundredths in HCP. If missing, treat as 1.00.
-                    df_items["qty"] = pd.to_numeric(df_items.get("qty_in_hundredths", 100), errors="coerce").fillna(100) / 100.0
+                    df_items["qty"] = pd.to_numeric(df_items.get("qty_in_hundredths", 0.0), errors="coerce").fillna(0.0) / 100.0
+                    # Some material lines may not have a reliable qty; treat missing/0 qty as 1 for costing.
+                    df_items.loc[df_items["qty"] <= 0, "qty"] = 1.0
 
-                    # Normalize names for pricebook joins
-                    df_items["name_norm"] = df_items.get("name", "").map(_norm_item_name)
+                    df_items["unit_cost_d"] = pd.to_numeric(df_items.get("unit_cost", 0.0), errors="coerce").fillna(0.0)
 
-                    # -----------------------------
-                    # Parts/materials cost (prefer invoice_items.unit_cost, fallback to pricebook material cost)
-                    # -----------------------------
-                    df_items["unit_cost"] = pd.to_numeric(df_items.get("unit_cost", 0), errors="coerce").fillna(0)
-                    df_items["unit_cost_filled"] = df_items["unit_cost"]
+                    # If unit_cost is missing/zero, we can't infer cost from invoice_items.
+                    # (Optional future: join to pricebook_materials by name and use its cost as a fallback.)
+                    df_items["parts_cost"] = df_items["unit_cost_d"] * df_items["qty"]
 
-                    # If unit_cost is missing/zero, try pricebook material cost (assumed cents) by name match.
-                    missing_cost_mask = (df_items.get("type", "").astype(str).str.lower() == "material") & (df_items["unit_cost_filled"] <= 0)
-                    if missing_cost_mask.any():
-                        df_items.loc[missing_cost_mask, "unit_cost_filled"] = df_items.loc[missing_cost_mask, "name_norm"].map(
-                            lambda k: material_cost_cents_map.get(k, 0.0)
-                        ).fillna(0)
+                    parts_cost_by_job = (
+                        df_items.groupby("job_id")["parts_cost"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"parts_cost": "parts_cost"})
+                    )
 
-                    # Only materials count toward "parts cost"
-                    df_items["part_cost"] = 0.0
-                    mat_mask = df_items.get("type", "").astype(str).str.lower() == "material"
-                    df_items.loc[mat_mask, "part_cost"] = df_items.loc[mat_mask, "unit_cost_filled"] * df_items.loc[mat_mask, "qty"]
-
-                    df_part_cost = df_items.groupby("job_id", as_index=False)["part_cost"].sum()
-                    df_part_cost.rename(columns={"part_cost": "parts_cost"}, inplace=True)
-
-                    # -----------------------------
-                    # Price-book duration (labor only): sum matched service durations (hours) * qty
-                    # -----------------------------
-                    df_labor = df_items[df_items.get("type", "").astype(str).str.lower() == "labor"].copy()
-                    if df_labor.empty:
-                        df_dur = pd.DataFrame({"job_id": [], "estimated_hours": []})
-                    else:
-                        df_labor["item_duration_hours"] = df_labor.get("name", "").map(_item_duration_hours)
-                        df_labor["estimated_hours"] = df_labor["item_duration_hours"] * df_labor["qty"]
-                        df_dur = df_labor.groupby("job_id", as_index=False)["estimated_hours"].sum()
-
-                                        # Optional: price-book duration by job (derived from matched labor line items)
-                    duration_by_job_pricebook = df_dur.rename(columns={"estimated_hours": "job_hours_pricebook"})
+                    # Optional: price-book duration by job from invoice items (sum of per-item durations * qty)
+                    df_items["item_name_norm"] = df_items["name"].apply(_norm_item_name)
+                    df_items["item_duration_hr"] = df_items["item_name_norm"].apply(_item_duration_hours)
+                    df_items["duration_hr"] = df_items["item_duration_hr"] * df_items["qty"]
+                    duration_by_job_pricebook = (
+                        df_items.groupby("job_id")["duration_hr"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"duration_hr": "job_hours_pricebook"})
+                    )
 
                     # Appointment duration by job (fallback)
                     job_hours_appt = pd.DataFrame(columns=["job_id", "job_hours_appt"])
