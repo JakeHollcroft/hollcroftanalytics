@@ -1489,278 +1489,6 @@ footer {
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* REVENUE BAR PERCENT LABEL (inside the bar) */
-.jc-dash .jc-revenue-bar-fill {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding-right: 10px;
-    min-width: 42px; /* so tiny categories still show a label */
-}
-
-.jc-dash .jc-revenue-bar-pct {
-    font-size: 0.78rem;
-    font-weight: 900;
-    letter-spacing: 0.2px;
-    color: rgba(255, 255, 255, 0.96);
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
-    line-height: 1;
-    pointer-events: none;
-}
-
-/* MINI TREND (DFO MONTHLY) */
-.jc-dash .jc-mini-trend {
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid rgba(226, 232, 240, 0.14);
-}
-
-.jc-dash .jc-mini-title {
-    font-size: 0.9rem;
-    font-weight: 900;
-    color: rgba(255, 255, 255, 0.95);
-    margin-bottom: 10px;
-}
-
-.jc-dash .jc-mini-bars {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
-    gap: 10px;
-    align-items: end;
-    height: 88px;
-}
-
-.jc-dash .jc-mini-bar {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-}
-
-.jc-dash .jc-mini-bar-fill {
-    width: 100%;
-    border-radius: 10px;
-    background: linear-gradient(180deg, rgba(42, 167, 224, 0.95), rgba(20, 184, 166, 0.85));
-    box-shadow: 0 8px 20px rgba(42, 167, 224, 0.18);
-    border: 1px solid rgba(226, 232, 240, 0.10);
-}
-
-.jc-dash .jc-mini-bar-label {
-    font-size: 0.75rem;
-    font-weight: 800;
-    color: rgba(226, 232, 240, 0.78);
-}
-
-/* EMPLOYEE KPI CARDS */
-.jc-dash .jc-employee-section {
-    max-width: 1300px;
-    margin: 0 auto 30px;
-    padding: 0 20px;
-}
-
-.jc-dash .jc-employee-header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 16px;
-}
-
-.jc-dash .jc-section-title {
-    margin: 0;
-    font-size: 1.35rem;
-    font-weight: 1000;
-    letter-spacing: -0.2px;
-    color: rgba(255, 255, 255, 0.98);
-}
-
-.jc-dash .jc-employee-subtitle {
-    margin: 8px 0 0;
-    color: var(--muted);
-    font-size: 0.95rem;
-    line-height: 1.5;
-}
-
-.jc-dash .jc-employee-legend {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.jc-dash .jc-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6px 10px;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 900;
-    border: 1px solid rgba(226, 232, 240, 0.14);
-    color: rgba(255, 255, 255, 0.95);
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.jc-dash .jc-pill-success {
-    border-color: rgba(34, 197, 94, 0.35);
-    background: rgba(34, 197, 94, 0.12);
-}
-
-.jc-dash .jc-pill-warning {
-    border-color: rgba(245, 158, 11, 0.35);
-    background: rgba(245, 158, 11, 0.12);
-}
-
-.jc-dash .jc-pill-danger {
-    border-color: rgba(239, 68, 68, 0.35);
-    background: rgba(239, 68, 68, 0.12);
-}
-
-.jc-dash .jc-employee-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 18px;
-}
-
-.jc-dash .jc-employee-card {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-    border: 1px solid rgba(226, 232, 240, 0.14);
-    border-radius: 20px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.22);
-    padding: 18px;
-    position: relative;
-    overflow: hidden;
-}
-
-.jc-dash .jc-employee-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(800px 260px at 20% -20%, rgba(42, 167, 224, 0.18), transparent 60%);
-    pointer-events: none;
-}
-
-.jc-dash .jc-employee-top {
-    display: grid;
-    grid-template-columns: 56px 1fr 10px;
-    align-items: center;
-    gap: 12px;
-    position: relative;
-    z-index: 1;
-    margin-bottom: 14px;
-}
-
-.jc-dash .jc-employee-avatar {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-    overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.14);
-    background: rgba(0, 0, 0, 0.2);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
-    display: grid;
-    place-items: center;
-}
-
-.jc-dash .jc-employee-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-.jc-dash .jc-employee-initials {
-    width: 100%;
-    height: 100%;
-    display: grid;
-    place-items: center;
-    font-weight: 1000;
-    font-size: 1.35rem;
-    color: rgba(255, 255, 255, 0.95);
-    background: linear-gradient(135deg, rgba(42, 167, 224, 0.55), rgba(20, 184, 166, 0.35));
-}
-
-.jc-dash .jc-employee-name {
-    font-size: 1.02rem;
-    font-weight: 1000;
-    color: rgba(255, 255, 255, 0.98);
-    letter-spacing: -0.2px;
-}
-
-.jc-dash .jc-employee-role {
-    margin-top: 4px;
-    display: inline-flex;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 900;
-    color: rgba(226, 232, 240, 0.9);
-    border: 1px solid rgba(226, 232, 240, 0.14);
-    background: rgba(0, 0, 0, 0.16);
-    width: fit-content;
-}
-
-.jc-dash .jc-employee-accent {
-    width: 10px;
-    height: 56px;
-    border-radius: 999px;
-    background: var(--emp-accent, rgba(42, 167, 224, 0.9));
-    box-shadow: 0 8px 20px rgba(42, 167, 224, 0.18);
-}
-
-.jc-dash .jc-employee-kpis {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    position: relative;
-    z-index: 1;
-}
-
-.jc-dash .jc-emp-kpi {
-    padding: 12px;
-    border-radius: 16px;
-    border: 1px solid rgba(226, 232, 240, 0.12);
-    background: rgba(0, 0, 0, 0.18);
-}
-
-.jc-dash .jc-emp-kpi-label {
-    font-size: 0.78rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0.35px;
-    color: rgba(226, 232, 240, 0.72);
-    margin-bottom: 6px;
-}
-
-.jc-dash .jc-emp-kpi-value {
-    font-size: 1.25rem;
-    font-weight: 1100;
-    color: rgba(255, 255, 255, 0.98);
-    letter-spacing: -0.3px;
-}
-
-.jc-dash .jc-emp-kpi-sub {
-    margin-top: 6px;
-    font-size: 0.82rem;
-    color: rgba(226, 232, 240, 0.72);
-}
-
-.jc-dash .jc-employee-footer {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(226, 232, 240, 0.12);
-    font-size: 0.85rem;
-    color: rgba(226, 232, 240, 0.72);
-    position: relative;
-    z-index: 1;
-}
-
-/* Status colors for employee KPIs (reuse names produced by kpis.py) */
-.jc-dash .jc-kpi-success { color: rgba(34, 197, 94, 0.98); }
-.jc-dash .jc-kpi-warning { color: rgba(245, 158, 11, 0.98); }
-.jc-dash .jc-kpi-danger  { color: rgba(239, 68, 68, 0.98); }
-
 .jc-dash .jc-revenue-bar-pct {
     font-size: 0.85rem;
     font-weight: 900;
@@ -2587,11 +2315,11 @@ footer {
 }
 
 /* -----------------------------
-   Employee cards (Premium)
+   Employee cards
 ------------------------------ */
 .jc-dash .jc-employee-section{
   max-width: 1300px;
-  margin: 0 auto 34px;
+  margin: 0 auto 30px;
   padding: 0 20px;
 }
 
@@ -2600,54 +2328,32 @@ footer {
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  margin: 12px 0 16px;
+  margin: 10px 0 14px;
 }
 
 .jc-dash .jc-employee-title{
-  font-size: 1.2rem;
-  font-weight: 750;
+  font-size: 1.15rem;
+  font-weight: 650;
   margin: 0;
-  letter-spacing: 0.2px;
 }
 
 .jc-dash .jc-employee-subtitle{
-  color: rgba(226, 232, 240, 0.78);
+  color: rgba(226, 232, 240, 0.75);
   font-size: 0.95rem;
 }
 
 .jc-dash .jc-employee-grid{
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .jc-dash .jc-employee-card{
-  position: relative;
-  overflow: hidden;
-  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  border-radius: 20px;
   padding: 18px;
-  border: 1px solid rgba(226, 232, 240, 0.16);
-  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
-  box-shadow:
-    0 10px 30px rgba(0,0,0,0.35),
-    inset 0 1px 0 rgba(255,255,255,0.10);
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.jc-dash .jc-employee-card::before{
-  content: "";
-  position: absolute;
-  inset: -2px;
-  background: radial-gradient(700px 240px at 10% 0%, rgba(34,211,238,0.18), transparent 55%);
-  pointer-events: none;
-}
-
-.jc-dash .jc-employee-card:hover{
-  transform: translateY(-2px);
-  border-color: rgba(34,211,238,0.26);
-  box-shadow:
-    0 14px 40px rgba(0,0,0,0.45),
-    inset 0 1px 0 rgba(255,255,255,0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .jc-dash .jc-employee-top{
@@ -2658,12 +2364,11 @@ footer {
 }
 
 .jc-dash .jc-employee-avatar{
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   object-fit: cover;
   border: 1px solid rgba(226, 232, 240, 0.18);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
 }
 
 .jc-dash .jc-employee-avatar-fallback{
@@ -2672,131 +2377,48 @@ footer {
   justify-content: center;
   background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.92);
-  font-weight: 800;
-}
-
-.jc-dash .jc-employee-meta{
-  min-width: 0;
-  flex: 1;
-}
-
-.jc-dash .jc-employee-name-row{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  font-weight: 700;
 }
 
 .jc-dash .jc-employee-name{
-  font-size: 1.05rem;
-  font-weight: 780;
+  font-size: 1.02rem;
+  font-weight: 650;
   line-height: 1.2;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jc-dash .jc-employee-role-pill{
-  flex: 0 0 auto;
-  font-size: 0.72rem;
-  padding: 6px 10px;
-  border-radius: 999px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: rgba(226,232,240,0.92);
-  background: rgba(34,211,238,0.12);
-  border: 1px solid rgba(34,211,238,0.22);
 }
 
 .jc-dash .jc-employee-role{
-  font-size: 0.92rem;
-  color: rgba(226, 232, 240, 0.70);
-  margin-top: 3px;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.75);
+  margin-top: 2px;
 }
 
-/* KPI tiles inside each card */
 .jc-dash .jc-employee-kpis{
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
-.jc-dash .jc-employee-kpi-value.is-warn{ color: #f0ad4e; }
-
 
 .jc-dash .jc-employee-kpi{
-  border-radius: 16px;
-  padding: 14px 14px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 12px;
+  border-radius: 14px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(226, 232, 240, 0.12);
-  min-height: 92px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
 }
 
 .jc-dash .jc-employee-kpi-label{
   color: rgba(226, 232, 240, 0.78);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  line-height: 1.2;
+  font-size: 0.92rem;
 }
 
 .jc-dash .jc-employee-kpi-value{
-  font-size: 1.35rem;
-  font-weight: 850;
-  letter-spacing: 0.2px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  font-size: 1.15rem;
+  font-weight: 750;
 }
 
-.jc-dash .jc-employee-kpi-value.is-good{ color: #28a745; }
-.jc-dash .jc-employee-kpi-value.is-bad{ color: #dc3545; }
 
-.jc-dash .jc-employee-kpi-subnote{
-  margin-top: 6px;
-  font-size: 0.82rem;
-  color: rgba(226,232,240,0.62);
-}
-
-@media (max-width: 560px){
-  .jc-dash .jc-employee-header{
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .jc-dash .jc-employee-kpis{
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 900px){
-  .jc-dash .jc-employee-kpis{
-    grid-template-columns: 1fr 1fr;
-  }
-}
-@media (max-width: 560px){
-  .jc-dash .jc-employee-kpis{
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 992px) {
-    .jc-dash .jc-employee-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 600px) {
-    .jc-dash .jc-employee-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .jc-dash .jc-employee-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .jc-dash .jc-employee-kpis {
-        grid-template-columns: 1fr;
-    }
-}
+/* Status text colors (used for KPI values) */
+.jc-status-success { color: #28a745; }
+.jc-status-warning { color: #ffc107; }
+.jc-status-danger  { color: #dc3545; }
