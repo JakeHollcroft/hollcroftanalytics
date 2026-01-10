@@ -56,6 +56,12 @@ def _sleep_with_log(base: float, jitter: float = 0.25):
     print(f"[{_ts()}] RUN {RUN_ID} Sleeping {delay:.2f}s")
     time.sleep(delay)
 
+def _add_column_if_missing(conn: duckdb.DuckDBPyConnection, table: str, col: str, col_type: str) -> None:
+    cols = conn.execute(f"DESCRIBE {table}").df()["column_name"].astype(str).str.lower().tolist()
+    if col.lower() not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+        print(f"[{_ts()}] RUN {RUN_ID} Schema migrate: added {table}.{col} {col_type}")
+
 
 def _request_with_retry(method: str, url: str, *, headers=None, params=None, timeout=30, max_retries=6):
     attempt = 0
@@ -285,6 +291,11 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection):
         )
         """
     )
+
+    # ---- schema migrations for older DBs (CREATE IF NOT EXISTS doesn't add columns) ----
+    _add_column_if_missing(conn, "jobs", "subtotal", "DOUBLE")
+    _add_column_if_missing(conn, "invoices", "subtotal", "DOUBLE")
+
 
 def should_run_min_interval(conn: duckdb.DuckDBPyConnection, min_interval_seconds: int) -> bool:
     """
