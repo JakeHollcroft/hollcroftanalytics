@@ -595,7 +595,7 @@ def get_dashboard_kpis():
         df_rev["tags_norm"] = df_rev.get("tags_norm", "").fillna("")
         df_rev["category"] = df_rev["tags_norm"].apply(_map_category_from_tags)
 
-        df_rev["amount_dollars"] = pd.to_numeric(df_rev["amount"], errors="coerce").fillna(0.0).astype(float)
+        df_rev["amount_dollars"] = (pd.to_numeric(df_rev["amount"], errors="coerce").fillna(0.0).astype(float) / 100.0)
 
         total_revenue_ytd = float(df_rev["amount_dollars"].sum()) if not df_rev.empty else 0.0
         total_revenue_ytd_display = _format_currency(total_revenue_ytd)
@@ -748,174 +748,173 @@ def get_dashboard_kpis():
                     .rename(columns={"dispatched_employee_id": "employee_id"})
                 )
 
-                # Gross profit per hour (service techs) YTD
-                # Target definition (JC):
-                #   Gross profit dollars per job per technician per hour (NOT installers)
-                #   Gross profit = Revenue - (Labor cost + Parts cost)
-                #   Labor cost = $525 (fixed per job)
-                #   Parts cost = sum(invoice_items.unit_cost * qty)
-                #   Hours = use price-book duration if you have it; otherwise fall back to appointment hours on the job
-                #
-                # Notes / assumptions:
-                # - We only compute this for SERVICE jobs (excludes installs/change-outs) using tags.
-                # - We attribute each job's GP and hours equally across NON-install technicians assigned to the job.
-                # - If no job-level hours are available, metric returns 0 (to avoid divide-by-zero).
-                gp_per_hour_target = 150.0
-                labor_cost_per_job = 525.0  # JC rule
+        # Gross profit per hour (approx) per tech YTD
+        # Revenue per job = invoice amount (sum of invoices on job)
+        # Cost per job = sum(invoice_items.unit_cost * qty) for that job
+        # Then attribute to technicians on the job equally (since we don't have item->tech mapping)
+        # Hours per tech from appointments (above)
+        # Excludes install/change out jobs for now (service tech metric)
+        # Gross Profit per Hour (service techs only)
+        # JC rule:
+        #   GP per hour = (Revenue - PartsCost - LaborCostFixed) / BilledHours
+        #   Revenue and costs are stored in cents in the DB (we convert to dollars).
+        #
+        # Notes:
+        # - Revenue: sum of invoice amounts for the job for non-voided/non-canceled invoices (paid/open)
+        # - PartsCost: sum of MATERIAL invoice_items (unit_cost * qty)
+        # - LaborCostFixed: $525 per job (service jobs only) -> 52500 cents
+        # - BilledHours: sum of LABOR invoice_items qty_in_hundredths/100 (hours billed to customer)
+        #   If billed hours missing/0, fallback to appointment hours.
+        # - Exclude installer roles from receiving this metric.
+        gp_per_hour_target = 150.0
+        labor_cost_fixed_cents = 52500.0
 
-                # Optional: price-book durations (hours) keyed by normalized invoice_item name.
-                # Fill this in as you standardize line-item naming. Anything not matched falls back to appointment hours.
-                PRICEBOOK_DURATION_HOURS: dict[str, float] = {
-                    # مثال / examples (replace with JC's actual price-book items):
-                    # "capacitor": 0.5,
-                    # "contactor": 0.5,
-                    # "coil cleaning": 1.0,
-                }
+        def _is_installer_role(role_val: str) -> bool:
+            r = str(role_val or "").strip().lower()
+            return ("install" in r) or ("installer" in r) or ("changeout" in r) or ("change out" in r)
 
-                def _norm_item_name(x) -> str:
-                    if x is None or (isinstance(x, float) and pd.isna(x)):
-                        return ""
-                    return str(x).strip().lower()
+        df_emp_gp = pd.DataFrame(columns=["employee_id", "gross_profit_per_hour_ytd"])
+        if (not df_invoices.empty) and (not df_invoice_items.empty) and (not df_job_emps.empty):
+            # -----------------------------
+            # 1) Revenue by job (YTD)
+            # -----------------------------
+            df_inv_ytd = df_invoices.copy()
+            df_inv_ytd["invoice_dt"] = pd.to_datetime(df_inv_ytd.get("invoice_date"), errors="coerce", utc=True)
+            df_inv_ytd = df_inv_ytd[df_inv_ytd["invoice_dt"] >= start_of_year_utc].copy()
 
-                def _item_duration_hours(name: str) -> float:
-                    key = _norm_item_name(name)
-                    if not key:
-                        return 0.0
-                    # exact match
-                    if key in PRICEBOOK_DURATION_HOURS:
-                        return float(PRICEBOOK_DURATION_HOURS[key])
-                    # substring match (so "Capacitor - 45/5" can match "capacitor")
-                    for k, v in PRICEBOOK_DURATION_HOURS.items():
-                        if k and k in key:
-                            return float(v)
-                    return 0.0
+            # Keep paid/open; exclude canceled/voided from "billed revenue"
+            df_inv_ytd["status_norm"] = df_inv_ytd.get("status", "").fillna("").astype(str).str.strip().str.lower()
+            df_inv_ytd = df_inv_ytd[~df_inv_ytd["status_norm"].isin(["voided", "canceled"])].copy()
 
-                df_emp_gp = pd.DataFrame(columns=["employee_id", "gross_profit_per_hour_ytd"])
+            df_inv_ytd["amount_cents"] = pd.to_numeric(df_inv_ytd.get("amount", 0.0), errors="coerce").fillna(0.0).astype(float)
+            rev_by_job = (
+                df_inv_ytd.groupby("job_id", dropna=False)["amount_cents"]
+                .sum()
+                .reset_index()
+                .rename(columns={"amount_cents": "job_revenue_cents"})
+            )
 
-                if (not df_rev.empty) and (not df_invoice_items.empty) and (not df_job_emps.empty):
-                    # Revenue by job (YTD invoices)
-                    rev_by_job = (
-                        df_rev.groupby("job_id")["amount_dollars"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"amount_dollars": "job_revenue"})
-                    )
+            # -----------------------------
+            # 2) Parts cost by job (MATERIAL items only)
+            # -----------------------------
+            di = df_invoice_items.copy()
+            di["type_norm"] = di.get("type", "").fillna("").astype(str).str.strip().str.lower()
 
-                    # Parts cost by job using invoice_items
-                    df_items = df_invoice_items.copy()
-                    df_items["qty"] = pd.to_numeric(df_items["qty_in_hundredths"], errors="coerce").fillna(0.0) / 100.0
-                    df_items["unit_cost_d"] = pd.to_numeric(df_items["unit_cost"], errors="coerce").fillna(0.0)
-                    df_items["parts_cost"] = df_items["unit_cost_d"] * df_items["qty"]
-                    parts_cost_by_job = (
-                        df_items.groupby("job_id")["parts_cost"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"parts_cost": "parts_cost"})
-                    )
+            di["qty_h"] = pd.to_numeric(di.get("qty_in_hundredths", 0), errors="coerce").fillna(0.0).astype(float)
+            # Convert hundredths to units/hours
+            di["qty_units"] = di["qty_h"] / 100.0
+            # If qty is missing/0, assume 1 unit for MATERIAL lines (common in flat items)
+            di.loc[(di["type_norm"] == "material") & (di["qty_units"] <= 0), "qty_units"] = 1.0
 
-                    # Optional: price-book duration by job from invoice items (sum of per-item durations * qty)
-                    df_items["item_name_norm"] = df_items["name"].apply(_norm_item_name)
-                    df_items["item_duration_hr"] = df_items["item_name_norm"].apply(_item_duration_hours)
-                    df_items["duration_hr"] = df_items["item_duration_hr"] * df_items["qty"]
-                    duration_by_job_pricebook = (
-                        df_items.groupby("job_id")["duration_hr"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"duration_hr": "job_hours_pricebook"})
-                    )
+            di["unit_cost_cents"] = pd.to_numeric(di.get("unit_cost", 0.0), errors="coerce").fillna(0.0).astype(float)
+            di["unit_price_cents"] = pd.to_numeric(di.get("unit_price", 0.0), errors="coerce").fillna(0.0).astype(float)
+            di["amount_cents"] = pd.to_numeric(di.get("amount", 0.0), errors="coerce").fillna(0.0).astype(float)
 
-                    # Appointment duration by job (fallback)
-                    job_hours_appt = pd.DataFrame(columns=["job_id", "job_hours_appt"])
-                    if not df_job_appts.empty:
-                        df_ap_job = df_job_appts.copy()
-                        # Filter to YTD completed jobs using job completion date
-                        if not df_jobs.empty:
-                            df_ap_job = df_ap_job.merge(df_jobs[["job_id", "completed_at", "tags_norm"]], how="left", on="job_id")
-                            df_ap_job["completed_at"] = _to_dt_utc(df_ap_job["completed_at"])
-                            df_ap_job = df_ap_job[df_ap_job["completed_at"] >= start_of_year_utc].copy()
+            parts = di[di["type_norm"] == "material"].copy()
+            parts["parts_cost_cents"] = parts["unit_cost_cents"] * parts["qty_units"]
 
-                        df_ap_job["duration_hours"] = (df_ap_job["end_dt"] - df_ap_job["start_dt"]).dt.total_seconds() / 3600.0
-                        df_ap_job["duration_hours"] = pd.to_numeric(df_ap_job["duration_hours"], errors="coerce").fillna(0.0)
-                        df_ap_job = df_ap_job[df_ap_job["duration_hours"] > 0].copy()
+            parts_by_job = (
+                parts.groupby("job_id", dropna=False)["parts_cost_cents"]
+                .sum()
+                .reset_index()
+                .rename(columns={"parts_cost_cents": "job_parts_cost_cents"})
+            )
 
-                        if not df_ap_job.empty:
-                            job_hours_appt = (
-                                df_ap_job.groupby("job_id")["duration_hours"]
-                                .sum()
-                                .reset_index()
-                                .rename(columns={"duration_hours": "job_hours_appt"})
-                            )
+            # -----------------------------
+            # 3) Billed hours by job (LABOR qty, billed to customer)
+            # -----------------------------
+            labor = di[di["type_norm"] == "labor"].copy()
+            labor["billed_hours"] = labor["qty_units"]  # qty_in_hundredths/100
+            hours_by_job = (
+                labor.groupby("job_id", dropna=False)["billed_hours"]
+                .sum()
+                .reset_index()
+                .rename(columns={"billed_hours": "job_billed_hours"})
+            )
 
-                    # Tags by job for service filtering
-                    tags_by_job = df_jobs[["job_id", "tags_norm"]].drop_duplicates() if (not df_jobs.empty) else pd.DataFrame(columns=["job_id", "tags_norm"])
+            # Fallback: appointment hours by job (if billed hours missing)
+            appt_hours_by_job = pd.DataFrame(columns=["job_id", "job_appt_hours"])
+            if not df_job_appts.empty:
+                ja = df_job_appts.copy()
+                ja["start_dt"] = pd.to_datetime(ja.get("start_time"), errors="coerce", utc=True)
+                ja["end_dt"] = pd.to_datetime(ja.get("end_time"), errors="coerce", utc=True)
+                ja["job_appt_hours"] = (ja["end_dt"] - ja["start_dt"]).dt.total_seconds() / 3600.0
+                ja["job_appt_hours"] = ja["job_appt_hours"].fillna(0.0)
+                appt_hours_by_job = (
+                    ja.groupby("job_id", dropna=False)["job_appt_hours"]
+                    .sum()
+                    .reset_index()
+                )
 
-                    # Combine job-level revenue/cost/hours
-                    job_gp = (
-                        rev_by_job
-                        .merge(parts_cost_by_job, how="left", on="job_id")
-                        .merge(duration_by_job_pricebook, how="left", on="job_id")
-                        .merge(job_hours_appt, how="left", on="job_id")
-                        .merge(tags_by_job, how="left", on="job_id")
-                    )
-                    job_gp["parts_cost"] = job_gp["parts_cost"].fillna(0.0)
-                    job_gp["tags_norm"] = job_gp["tags_norm"].fillna("")
-                    job_gp["job_hours_pricebook"] = job_gp.get("job_hours_pricebook", 0.0).fillna(0.0)
-                    job_gp["job_hours_appt"] = job_gp.get("job_hours_appt", 0.0).fillna(0.0)
+            # -----------------------------
+            # 4) Assemble per-job GP/hr (service jobs only)
+            # -----------------------------
+            tags_by_job = df_jobs[["job_id", "tags_norm"]].drop_duplicates()
+            job_gp = (
+                rev_by_job
+                .merge(parts_by_job, how="left", on="job_id")
+                .merge(hours_by_job, how="left", on="job_id")
+                .merge(appt_hours_by_job, how="left", on="job_id")
+                .merge(tags_by_job, how="left", on="job_id")
+            )
+            job_gp["job_parts_cost_cents"] = job_gp["job_parts_cost_cents"].fillna(0.0)
+            job_gp["job_billed_hours"] = job_gp["job_billed_hours"].fillna(0.0)
+            job_gp["job_appt_hours"] = job_gp.get("job_appt_hours", 0.0).fillna(0.0)
+            job_gp["tags_norm"] = job_gp.get("tags_norm", "").fillna("")
 
-                    # Only SERVICE jobs for this metric
-                    job_gp = job_gp[job_gp["tags_norm"].apply(_is_service_job)].copy()
+            # Only service jobs
+            job_gp = job_gp[job_gp["tags_norm"].apply(_is_service_job)].copy()
 
-                    # Choose job hours: price-book if present, else appointment hours
-                    job_gp["job_hours"] = job_gp.apply(
-                        lambda r: float(r["job_hours_pricebook"]) if float(r["job_hours_pricebook"]) > 0 else float(r["job_hours_appt"]),
-                        axis=1
-                    )
+            # Choose billed hours, fallback to appointments
+            job_gp["job_hours"] = job_gp["job_billed_hours"]
+            job_gp.loc[job_gp["job_hours"] <= 0, "job_hours"] = job_gp.loc[job_gp["job_hours"] <= 0, "job_appt_hours"]
 
-                    # Gross profit per job per JC rules
-                    job_gp["job_cost"] = job_gp["parts_cost"] + float(labor_cost_per_job)
-                    job_gp["job_gross_profit"] = job_gp["job_revenue"] - job_gp["job_cost"]
+            # Apply fixed labor cost only when there is meaningful revenue on the job
+            job_gp["job_labor_cost_cents"] = job_gp["job_revenue_cents"].apply(lambda x: labor_cost_fixed_cents if float(x) > 0 else 0.0)
 
-                    # Assigned employees (exclude installers by ROLE)
-                    df_job_assigned = df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]).copy()
+            job_gp["job_gp_cents"] = job_gp["job_revenue_cents"] - job_gp["job_parts_cost_cents"] - job_gp["job_labor_cost_cents"]
 
-                    if not df_emp_dim.empty and "role" in df_emp_dim.columns:
-                        emp_roles = df_emp_dim[["employee_id", "role"]].copy()
-                        emp_roles["role_norm"] = emp_roles["role"].fillna("").astype(str).str.lower()
-                        df_job_assigned = df_job_assigned.merge(emp_roles[["employee_id", "role_norm"]], how="left", on="employee_id")
-                        df_job_assigned = df_job_assigned[~df_job_assigned["role_norm"].str.contains("install", na=False)].copy()
-                        df_job_assigned.drop(columns=["role_norm"], inplace=True, errors="ignore")
+            # Guard: no hours -> 0
+            job_gp["job_gp_per_hour"] = job_gp.apply(
+                lambda r: (float(r["job_gp_cents"]) / 100.0) / float(r["job_hours"])
+                if float(r["job_hours"]) > 0 else 0.0,
+                axis=1
+            )
 
-                    job_gp_emp = job_gp.merge(df_job_assigned, how="inner", on="job_id")
+            # -----------------------------
+            # 5) Attribute to service techs on the job (exclude installers)
+            # -----------------------------
+            df_job_assigned = df_job_emps[["job_id", "employee_id", "role"]].dropna(subset=["employee_id"]).copy()
+            df_job_assigned["role"] = df_job_assigned.get("role", "").fillna("")
+            df_job_assigned = df_job_assigned[~df_job_assigned["role"].apply(_is_installer_role)].copy()
 
-                    if not job_gp_emp.empty:
-                        # Tech count per job (for equal split)
-                        tech_count = (
-                            job_gp_emp.groupby("job_id")["employee_id"]
-                            .nunique()
-                            .reset_index()
-                            .rename(columns={"employee_id": "tech_count"})
-                        )
-                        job_gp_emp = job_gp_emp.merge(tech_count, how="left", on="job_id")
-                        job_gp_emp["tech_count"] = job_gp_emp["tech_count"].fillna(1).astype(int)
+            job_gp_emp = job_gp.merge(df_job_assigned[["job_id", "employee_id"]], how="inner", on="job_id")
+            if not job_gp_emp.empty:
+                tech_count = (
+                    job_gp_emp.groupby("job_id")["employee_id"].nunique()
+                    .reset_index()
+                    .rename(columns={"employee_id": "tech_count"})
+                )
+                job_gp_emp = job_gp_emp.merge(tech_count, how="left", on="job_id")
+                job_gp_emp["tech_count"] = job_gp_emp["tech_count"].fillna(1).astype(int)
 
-                        # Allocate GP and hours equally
-                        job_gp_emp["gp_alloc"] = job_gp_emp["job_gross_profit"] / job_gp_emp["tech_count"]
-                        job_gp_emp["hours_alloc"] = job_gp_emp["job_hours"] / job_gp_emp["tech_count"]
+                # Allocate GP and hours equally across techs (no item->tech map available)
+                job_gp_emp["gp_alloc_dollars"] = (job_gp_emp["job_gp_cents"] / 100.0) / job_gp_emp["tech_count"]
+                job_gp_emp["hours_alloc"] = job_gp_emp["job_hours"] / job_gp_emp["tech_count"]
 
-                        gp_emp = (
-                            job_gp_emp.groupby("employee_id")
-                            .agg(gross_profit_ytd=("gp_alloc", "sum"), hours_ytd=("hours_alloc", "sum"))
-                            .reset_index()
-                        )
+                per_emp = (
+                    job_gp_emp.groupby("employee_id")[["gp_alloc_dollars", "hours_alloc"]]
+                    .sum()
+                    .reset_index()
+                )
+                per_emp["gross_profit_per_hour_ytd"] = per_emp.apply(
+                    lambda r: float(r["gp_alloc_dollars"]) / float(r["hours_alloc"])
+                    if float(r["hours_alloc"]) > 0 else 0.0,
+                    axis=1
+                )
 
-                        gp_emp["gross_profit_per_hour_ytd"] = gp_emp.apply(
-                            lambda r: (float(r["gross_profit_ytd"]) / float(r["hours_ytd"])) if float(r["hours_ytd"]) > 0 else 0.0,
-                            axis=1
-                        )
-
-                        df_emp_gp = gp_emp[["employee_id", "gross_profit_per_hour_ytd"]]
-
-                # Build employee card records
+                df_emp_gp = per_emp[["employee_id", "gross_profit_per_hour_ytd"]]
+        # Build employee card records
         df_cards = df_emp_dim[["employee_id", "employee_name", "role", "avatar_url", "color_hex"]].copy()
         df_cards = df_cards.merge(df_completed_jobs_emp, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_atv, how="left", on="employee_id")
