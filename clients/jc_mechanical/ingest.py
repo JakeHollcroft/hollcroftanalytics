@@ -3,12 +3,9 @@
 import os
 import time
 import random
-import uuid
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-
 import duckdb
 import pandas as pd
+from datetime import datetime, timedelta, timezone
 import requests
 from requests.exceptions import (
     HTTPError,
@@ -18,21 +15,16 @@ from requests.exceptions import (
     RequestException,
 )
 
-# -----------------------------
-# Storage / DB
-# -----------------------------
-PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
-DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
-
-# -----------------------------
-# API config
-# -----------------------------
-API_KEY = os.environ.get("HOUSECALLPRO_API_KEY", "").strip()
+from .config import DB_FILE, API_KEY
 
 BASE_URL_JOBS = "https://api.housecallpro.com/jobs"
 BASE_URL_JOB_DETAIL = "https://api.housecallpro.com/jobs/{id}"
 BASE_URL_CUSTOMERS = "https://api.housecallpro.com/customers"
 BASE_URL_INVOICES = "https://api.housecallpro.com/invoices"
+
+# NEW
+BASE_URL_EMPLOYEES = "https://api.housecallpro.com/employees"
+BASE_URL_ESTIMATES = "https://api.housecallpro.com/estimates"
 
 HEADERS = {
     "Authorization": f"Token {API_KEY}",
@@ -43,45 +35,69 @@ HEADERS = {
 
 COMPLETED_STATUSES = {"complete unrated", "complete rated"}
 
-# -----------------------------
-# Rolling window controls
-# -----------------------------
-# How many days back to pull for incremental runs
-INGEST_WINDOW_DAYS = int(os.environ.get("INGEST_WINDOW_DAYS", "7"))
+# ---- Retry / throttling controls (tune later) ----
+DETAIL_WINDOW_DAYS = int(os.environ.get("HCP_DETAIL_WINDOW_DAYS", "45"))
+DETAIL_BATCH_PAUSE_EVERY = int(os.environ.get("HCP_DETAIL_BATCH_PAUSE_EVERY", "25"))
+DETAIL_BATCH_PAUSE_SEC = float(os.environ.get("HCP_DETAIL_BATCH_PAUSE_SEC", "0.6"))
 
-# How many days back to call job detail endpoint (appointments) for completed jobs
-DETAIL_WINDOW_DAYS = int(os.environ.get("DETAIL_WINDOW_DAYS", "14"))
-
-# One-time full backfill mode
-BACKFILL = os.environ.get("BACKFILL", "").strip() == "1"
-
-# -----------------------------
-# Retry / throttling controls
-# -----------------------------
-DETAIL_MAX_RETRIES = 6
-DETAIL_BASE_BACKOFF_SEC = 0.8
-DETAIL_JITTER_SEC = 0.35
-DETAIL_MIN_DELAY_EACH_CALL_SEC = 0.12
-DETAIL_BATCH_PAUSE_EVERY = 25
-DETAIL_BATCH_PAUSE_SEC = 0.8
-
-REQUEST_TIMEOUT = (10, 45)
-
-SESSION = requests.Session()
-SESSION.headers.update(HEADERS)
-
-RUN_ID = uuid.uuid4().hex[:8]
-
-# -----------------------------
-# DB-backed cross-process lock
-# -----------------------------
+RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 LOCK_KEY = "ingest_lock"
-LOCK_TTL_SECONDS = 60 * 60  # 1 hour (was 6h)
 
+
+# -----------------------------
+# Utilities
+# -----------------------------
 def _ts() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-def _ensure_metadata_table(conn: duckdb.DuckDBPyConnection) -> None:
+
+def _sleep_with_log(base: float, jitter: float = 0.25):
+    delay = max(0.0, base + random.uniform(0, jitter))
+    print(f"[{_ts()}] RUN {RUN_ID} Sleeping {delay:.2f}s")
+    time.sleep(delay)
+
+
+def _request_with_retry(method: str, url: str, *, headers=None, params=None, timeout=30, max_retries=6):
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            resp = requests.request(method, url, headers=headers, params=params, timeout=timeout)
+            # Handle rate limits / transient errors
+            if resp.status_code == 429 or (500 <= resp.status_code < 600):
+                if attempt >= max_retries:
+                    resp.raise_for_status()
+                retry_after = resp.headers.get("Retry-After")
+                backoff = float(retry_after) if retry_after else min(8.0, 0.7 * (2 ** (attempt - 1)))
+                print(
+                    f"[{_ts()}] RUN {RUN_ID} Retryable HTTP {resp.status_code} on {url}. "
+                    f"Attempt {attempt}/{max_retries}. Backing off {backoff:.2f}s"
+                )
+                _sleep_with_log(backoff, jitter=0.6)
+                continue
+
+            resp.raise_for_status()
+            return resp
+        except (ConnectionError, Timeout, ChunkedEncodingError) as e:
+            if attempt >= max_retries:
+                raise
+            backoff = min(8.0, 0.7 * (2 ** (attempt - 1)))
+            print(f"[{_ts()}] RUN {RUN_ID} Network error on {url}: {e}. Attempt {attempt}/{max_retries}. Backoff {backoff:.2f}s")
+            _sleep_with_log(backoff, jitter=0.6)
+        except HTTPError:
+            raise
+        except RequestException as e:
+            if attempt >= max_retries:
+                raise
+            backoff = min(8.0, 0.7 * (2 ** (attempt - 1)))
+            print(f"[{_ts()}] RUN {RUN_ID} RequestException on {url}: {e}. Attempt {attempt}/{max_retries}. Backoff {backoff:.2f}s")
+            _sleep_with_log(backoff, jitter=0.6)
+
+
+# -----------------------------
+# DuckDB setup
+# -----------------------------
+def ensure_core_tables(conn: duckdb.DuckDBPyConnection):
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS metadata (
@@ -91,106 +107,28 @@ def _ensure_metadata_table(conn: duckdb.DuckDBPyConnection) -> None:
         """
     )
 
-def _get_metadata(conn: duckdb.DuckDBPyConnection, key: str):
-    _ensure_metadata_table(conn)
-    row = conn.execute("SELECT value FROM metadata WHERE key = ?", [key]).fetchone()
-    return row[0] if row else None
-
-def _set_metadata(conn: duckdb.DuckDBPyConnection, key: str, value: str) -> None:
-    _ensure_metadata_table(conn)
     conn.execute(
         """
-        INSERT INTO metadata (key, value)
-        VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        [key, value],
-    )
-
-def _try_acquire_ingest_lock(conn: duckdb.DuckDBPyConnection) -> bool:
-    now = time.time()
-    raw = _get_metadata(conn, LOCK_KEY)
-
-    if raw:
-        try:
-            lock_ts = float(raw)
-        except Exception:
-            lock_ts = 0.0
-
-        age = now - lock_ts
-        if age < LOCK_TTL_SECONDS:
-            print(f"[{_ts()}] RUN {RUN_ID} Lock exists (age {age:.0f}s). Skipping.")
-            return False
-
-        print(f"[{_ts()}] RUN {RUN_ID} Lock stale (age {age:.0f}s). Stealing lock...")
-
-    _set_metadata(conn, LOCK_KEY, str(now))
-    return True
-
-def _release_ingest_lock(conn: duckdb.DuckDBPyConnection) -> None:
-    _ensure_metadata_table(conn)
-    conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
-
-def update_last_refresh(conn: duckdb.DuckDBPyConnection) -> None:
-    _set_metadata(conn, "last_refresh", datetime.now(timezone.utc).isoformat())
-
-def _ingest_due(conn: duckdb.DuckDBPyConnection, min_interval_seconds: int) -> bool:
-    raw = _get_metadata(conn, "last_refresh")
-    if not raw:
-        return True
-    try:
-        last = datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
-    except Exception:
-        return True
-    age = (datetime.now(timezone.utc) - last).total_seconds()
-    return age >= float(min_interval_seconds)
-
-def clear_ingest_lock() -> bool:
-    conn = duckdb.connect(DB_FILE)
-    try:
-        _ensure_metadata_table(conn)
-        exists = conn.execute("SELECT 1 FROM metadata WHERE key = ?", [LOCK_KEY]).fetchone()
-        if not exists:
-            return False
-        conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
-        return True
-    finally:
-        conn.close()
-
-# -----------------------------
-# Table creation (create once)
-# -----------------------------
-def ensure_core_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    # Keep schema simple and stable. You can tighten types later.
-    conn.execute(
-        """
-            CREATE TABLE IF NOT EXISTS jobs (
-        job_id TEXT,
-        invoice_number TEXT,
-        description TEXT,
-        work_status TEXT,
-        total_amount DOUBLE,
-        outstanding_balance DOUBLE,
-        company_name TEXT,
-        company_id TEXT,
-        created_at TEXT,
-        updated_at TEXT,
-        completed_at TEXT,
-        customer_id TEXT,
-        num_appointments INTEGER,
-        tags TEXT
-    )
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            invoice_number TEXT,
+            description TEXT,
+            customer_id TEXT,
+            work_status TEXT,
+            total_amount DOUBLE,
+            outstanding_balance DOUBLE,
+            subtotal DOUBLE,
+            tags TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            completed_at TEXT,
+            scheduled_start TEXT,
+            scheduled_end TEXT,
+            num_appointments INTEGER
+        )
         """
     )
-    # Backward-compatible schema upgrade (adds missing columns)
-    try:
-        conn.execute("ALTER TABLE jobs ADD COLUMN tags TEXT")
-    except Exception:
-        pass
 
-        # -----------------------------
-    # job_employees (bridge table)
-    # -----------------------------
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS job_employees (
@@ -200,53 +138,32 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection) -> None:
             last_name TEXT,
             email TEXT,
             mobile_number TEXT,
-            role TEXT,
-            avatar_url TEXT,
             color_hex TEXT,
-            company_id TEXT,
-            company_name TEXT,
-            updated_at TEXT
+            avatar_url TEXT,
+            role TEXT
         )
         """
     )
-    for col, coltype in [
-    ("role", "TEXT"),
-    ("avatar_url", "TEXT"),
-    ("color_hex", "TEXT"),
-    ("updated_at", "TEXT"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE job_employees ADD COLUMN {col} {coltype}")
-        except Exception:
-            pass
 
-    
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS customers (
-            customer_id TEXT,
+            customer_id TEXT PRIMARY KEY,
             first_name TEXT,
             last_name TEXT,
             email TEXT,
             mobile_number TEXT,
-            home_number TEXT,
-            work_number TEXT,
             company TEXT,
-            notifications_enabled BOOLEAN,
-            lead_source TEXT,
-            notes TEXT,
             created_at TEXT,
-            updated_at TEXT,
-            company_name TEXT,
-            company_id TEXT,
-            tags TEXT
+            updated_at TEXT
         )
         """
     )
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS invoices (
-            invoice_id TEXT,
+            invoice_id TEXT PRIMARY KEY,
             job_id TEXT,
             invoice_number TEXT,
             status TEXT,
@@ -263,213 +180,302 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
-    _ensure_metadata_table(conn)
+
+    # -----------------------------
+    # employees (master list)
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS employees (
+            employee_id TEXT PRIMARY KEY,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            mobile_number TEXT,
+            role TEXT,
+            avatar_url TEXT,
+            color_hex TEXT,
+            company_id TEXT,
+            company_name TEXT
+        )
+        """
+    )
+
+    # -----------------------------
+    # job_appointments (normalized appointments + dispatched tech IDs)
+    # One row per (job_id, appointment_id, dispatched_employee_id)
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_appointments (
+            job_id TEXT,
+            appointment_id TEXT,
+            start_time TEXT,
+            end_time TEXT,
+            anytime BOOLEAN,
+            arrival_window_minutes INTEGER,
+            dispatched_employee_id TEXT
+        )
+        """
+    )
+
+    # -----------------------------
+    # invoice_items (line items from invoices)
+    # cost comes from unit_cost for now (materials/labor)
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            invoice_id TEXT,
+            job_id TEXT,
+            item_id TEXT,
+            name TEXT,
+            type TEXT,
+            qty_in_hundredths INTEGER,
+            unit_cost DOUBLE,
+            unit_price DOUBLE,
+            amount DOUBLE,
+            description TEXT
+        )
+        """
+    )
+
+    # -----------------------------
+    # estimates + options + assigned employees
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS estimates (
+            estimate_id TEXT PRIMARY KEY,
+            estimate_number TEXT,
+            work_status TEXT,
+            lead_source TEXT,
+            customer_id TEXT,
+            scheduled_start TEXT,
+            scheduled_end TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            company_id TEXT,
+            company_name TEXT
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS estimate_options (
+            option_id TEXT PRIMARY KEY,
+            estimate_id TEXT,
+            name TEXT,
+            option_number TEXT,
+            total_amount DOUBLE,
+            status TEXT,
+            approval_status TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS estimate_employees (
+            estimate_id TEXT,
+            employee_id TEXT
+        )
+        """
+    )
+
+
+def _get_metadata(conn: duckdb.DuckDBPyConnection, key: str) -> str | None:
+    try:
+        row = conn.execute("SELECT value FROM metadata WHERE key = ?", [key]).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _set_metadata(conn: duckdb.DuckDBPyConnection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO metadata(key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        [key, value],
+    )
+
+
+def acquire_lock(conn: duckdb.DuckDBPyConnection, ttl_minutes: int = 20) -> bool:
+    now = datetime.now(timezone.utc)
+    lock_val = _get_metadata(conn, LOCK_KEY)
+    if lock_val:
+        try:
+            lock_time = datetime.fromisoformat(lock_val)
+            if lock_time.tzinfo is None:
+                lock_time = lock_time.replace(tzinfo=timezone.utc)
+            age = now - lock_time
+            if age < timedelta(minutes=ttl_minutes):
+                print(f"[{_ts()}] RUN {RUN_ID} Lock present (age {age}). Skipping run.")
+                return False
+        except Exception:
+            pass
+
+    _set_metadata(conn, LOCK_KEY, str(now))
+    return True
+
+
+def release_lock(conn: duckdb.DuckDBPyConnection):
+    try:
+        conn.execute("DELETE FROM metadata WHERE key = ?", [LOCK_KEY])
+    except Exception:
+        pass
+
 
 # -----------------------------
-# Networking helpers
+# Fetchers (paged)
 # -----------------------------
-def _sleep_with_log(seconds: float, reason: str) -> None:
-    seconds = max(0.0, float(seconds))
-    print(f"[{_ts()}] RUN {RUN_ID} BACKOFF: {reason}")
-    print(f"[{_ts()}] RUN {RUN_ID} Sleeping {seconds:.2f}s...")
-    time.sleep(seconds)
-
-def _request_json_with_params(url: str, params: dict, timeout=REQUEST_TIMEOUT):
-    resp = SESSION.get(url, params=params, timeout=timeout)
-
-    # If API returns 429 here, raise so caller can handle (we keep paging simpler)
-    if resp.status_code == 429:
-        resp.raise_for_status()
-
-    # 400 is used below to detect "bad filter param"
-    if resp.status_code >= 400:
-        resp.raise_for_status()
-
-    return resp.json()
-
-def fetch_all(endpoint: str, key_name: str, page_size: int = 100, extra_params: dict | None = None):
-    all_items = []
+def fetch_all(url: str, *, key_name: str, page_size: int = 100):
     page = 1
-
+    out = []
     while True:
         params = {"page": page, "page_size": page_size}
-        if extra_params:
-            params.update(extra_params)
-
-        resp = SESSION.get(endpoint, params=params, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-
+        resp = _request_with_retry("GET", url, headers=HEADERS, params=params)
         data = resp.json()
-        items = data.get(key_name, [])
-        all_items.extend(items)
 
-        total_pages = data.get("total_pages", 1)
-        print(f"[{_ts()}] RUN {RUN_ID} Fetched page {page} of {total_pages} ({len(items)} items)")
+        items = data.get(key_name) or data.get("data") or []
+        out.extend(items)
 
-        if page >= total_pages:
+        total_pages = data.get("total_pages") or data.get("total_pages_count") or 1
+        if page >= int(total_pages):
             break
         page += 1
+        _sleep_with_log(0.05, jitter=0.15)
 
-    return all_items
+    return out
 
-def fetch_all_recent(endpoint: str, key_name: str, since_iso: str, page_size: int = 100):
-    """
-    Housecall Pro filtering parameters can vary depending on endpoint/version.
-    We try a handful of common patterns. If all fail with 400, we fall back to full pull.
-    """
-    candidates = [
-        {"updated_since": since_iso},
-        {"updated_at_min": since_iso},
-        {"updated_at_start": since_iso},
-        {"updated_at[gte]": since_iso},
-        {"from": since_iso},
-    ]
 
-    last_400 = None
-    for p in candidates:
-        try:
-            print(f"[{_ts()}] RUN {RUN_ID} Trying filtered pull params: {p}")
-            return fetch_all(endpoint, key_name=key_name, page_size=page_size, extra_params=p)
-        except HTTPError as e:
-            status = getattr(e.response, "status_code", None)
-            if status == 400:
-                last_400 = e
-                print(f"[{_ts()}] RUN {RUN_ID} Filter params rejected (400). Trying next...")
-                continue
-            raise
+def fetch_all_recent(url: str, *, key_name: str, since_iso: str, page_size: int = 100):
+    page = 1
+    out = []
+    while True:
+        params = {"page": page, "page_size": page_size, "updated_at_min": since_iso}
+        resp = _request_with_retry("GET", url, headers=HEADERS, params=params)
+        data = resp.json()
 
-    print(f"[{_ts()}] RUN {RUN_ID} WARNING: Could not filter by updated-since (400). Falling back to full pull.")
-    if last_400:
-        print(f"[{_ts()}] RUN {RUN_ID} Last 400 error was: {last_400}")
-    return fetch_all(endpoint, key_name=key_name, page_size=page_size, extra_params=None)
+        items = data.get(key_name) or data.get("data") or []
+        out.extend(items)
 
-def fetch_job_details(job_id: str):
+        total_pages = data.get("total_pages") or data.get("total_pages_count") or 1
+        if page >= int(total_pages):
+            break
+        page += 1
+        _sleep_with_log(0.05, jitter=0.15)
+
+    return out
+
+
+def fetch_job_details(job_id: str) -> dict:
     url = BASE_URL_JOB_DETAIL.format(id=job_id)
-    expand_params_primary = [("expand[]", "appointments")]
-    expand_params_fallback = {"expand": "appointments"}
+    # Important: expand appointments so we can store them for tech-hours KPIs
+    params = {"expand[]": "appointments"}
+    resp = _request_with_retry("GET", url, headers=HEADERS, params=params)
+    return resp.json()
 
-    last_err = None
-    for attempt in range(1, DETAIL_MAX_RETRIES + 1):
-        if DETAIL_MIN_DELAY_EACH_CALL_SEC > 0:
-            if attempt == 1:
-                print(f"[{_ts()}] RUN {RUN_ID} Throttle: sleeping {DETAIL_MIN_DELAY_EACH_CALL_SEC:.2f}s before detail call for job {job_id}")
-            time.sleep(DETAIL_MIN_DELAY_EACH_CALL_SEC)
-
-        try:
-            resp = SESSION.get(url, params=expand_params_primary, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 400:
-                resp = SESSION.get(url, params=expand_params_fallback, timeout=REQUEST_TIMEOUT)
-
-            if resp.status_code == 429:
-                retry_after = resp.headers.get("Retry-After")
-                if retry_after:
-                    wait = float(retry_after)
-                    reason = f"429 rate limit for job {job_id} (Retry-After={retry_after}) attempt {attempt}/{DETAIL_MAX_RETRIES}"
-                else:
-                    wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(0, DETAIL_JITTER_SEC)
-                    reason = f"429 rate limit for job {job_id} (no Retry-After) attempt {attempt}/{DETAIL_MAX_RETRIES}"
-                _sleep_with_log(wait, reason)
-                continue
-
-            if resp.status_code in (500, 502, 503, 504):
-                wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(0, DETAIL_JITTER_SEC)
-                reason = f"Server error {resp.status_code} for job {job_id} attempt {attempt}/{DETAIL_MAX_RETRIES}"
-                _sleep_with_log(wait, reason)
-                continue
-
-            resp.raise_for_status()
-            return resp.json()
-
-        except (ConnectionError, Timeout, ChunkedEncodingError) as e:
-            last_err = e
-            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(0, DETAIL_JITTER_SEC)
-            reason = f"Network/timeout error for job {job_id}: {type(e).__name__}: {e} attempt {attempt}/{DETAIL_MAX_RETRIES}"
-            _sleep_with_log(wait, reason)
-            continue
-
-        except HTTPError as e:
-            last_err = e
-            status = getattr(e.response, "status_code", None)
-            if status in (400, 401, 403, 404):
-                raise
-            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(0, DETAIL_JITTER_SEC)
-            reason = f"HTTP error for job {job_id}: status={status} {e} attempt {attempt}/{DETAIL_MAX_RETRIES}"
-            _sleep_with_log(wait, reason)
-            continue
-
-        except RequestException as e:
-            last_err = e
-            wait = (DETAIL_BASE_BACKOFF_SEC * (2 ** (attempt - 1))) + random.uniform(0, DETAIL_JITTER_SEC)
-            reason = f"RequestException for job {job_id}: {type(e).__name__}: {e} attempt {attempt}/{DETAIL_MAX_RETRIES}"
-            _sleep_with_log(wait, reason)
-            continue
-
-    raise last_err if last_err else RuntimeError(f"Failed to fetch job details for {job_id}")
 
 # -----------------------------
 # Flatteners
 # -----------------------------
-def appointment_count_from_job(job_obj):
-    schedule = job_obj.get("schedule") or {}
-    appts = schedule.get("appointments")
-    if isinstance(appts, list):
-        return len(appts)
-
-    appts2 = job_obj.get("appointments")
-    if isinstance(appts2, list):
-        return len(appts2)
-
-    return 0
-
 def flatten_jobs(jobs):
-    job_rows = []
+    rows = []
     emp_rows = []
 
-    for job in jobs:
-        job_id = str(job.get("id")) if job.get("id") is not None else None
+    for j in jobs:
+        job_id = j.get("id")
+        customer = j.get("customer") or {}
+        schedule = j.get("schedule") or {}
+        tags = j.get("tags") or []
 
-        job_rows.append(
+        completed_at = None
+        try:
+            wt = j.get("work_timestamps") or {}
+            completed_at = wt.get("completed_at")
+        except Exception:
+            completed_at = None
+
+        rows.append(
             {
                 "job_id": job_id,
-                "invoice_number": job.get("invoice_number"),
-                "description": job.get("description"),
-                "work_status": job.get("work_status"),
-                "total_amount": job.get("total_amount"),
-                "outstanding_balance": job.get("outstanding_balance"),
-                "company_name": job.get("company_name"),
-                "company_id": str(job.get("company_id")) if job.get("company_id") is not None else None,
-                "created_at": job.get("created_at"),
-                "updated_at": job.get("updated_at"),
-                "completed_at": (job.get("work_timestamps") or {}).get("completed_at"),
-                "customer_id": str((job.get("customer") or {}).get("id")) if job.get("customer") else None,
-                "num_appointments": 0,
-                "tags": ",".join(job.get("tags", [])) if job.get("tags") else None,
+                "invoice_number": j.get("invoice_number"),
+                "description": j.get("description"),
+                "customer_id": customer.get("id"),
+                "work_status": j.get("work_status"),
+                "total_amount": j.get("total_amount"),
+                "outstanding_balance": j.get("outstanding_balance"),
+                "subtotal": j.get("subtotal"),
+                "tags": ",".join([str(t) for t in tags]) if tags else None,
+                "created_at": j.get("created_at"),
+                "updated_at": j.get("updated_at"),
+                "completed_at": completed_at,
+                "scheduled_start": schedule.get("scheduled_start"),
+                "scheduled_end": schedule.get("scheduled_end"),
+                "num_appointments": None,  # filled later from details (recent completed)
             }
         )
 
-        # Bridge rows (job -> assigned employees)
-        for emp in (job.get("assigned_employees") or []):
+        for e in (j.get("assigned_employees") or []):
             emp_rows.append(
                 {
                     "job_id": job_id,
-                    "employee_id": str(emp.get("id")) if emp.get("id") is not None else None,
-                    "first_name": emp.get("first_name"),
-                    "last_name": emp.get("last_name"),
-                    "email": emp.get("email"),
-                    "mobile_number": emp.get("mobile_number"),
-                    "role": emp.get("role"),
-                    "avatar_url": emp.get("avatar_url"),
-                    "color_hex": emp.get("color_hex"),
-                    "company_id": str(job.get("company_id")) if job.get("company_id") is not None else None,
-                    "company_name": job.get("company_name"),
-                    "updated_at": job.get("updated_at"),
+                    "employee_id": e.get("id"),
+                    "first_name": e.get("first_name"),
+                    "last_name": e.get("last_name"),
+                    "email": e.get("email"),
+                    "mobile_number": e.get("mobile_number"),
+                    "color_hex": e.get("color_hex"),
+                    "avatar_url": e.get("avatar_url"),
+                    "role": e.get("role"),
                 }
             )
 
-    df_jobs = pd.DataFrame(job_rows)
-    df_job_emps = pd.DataFrame(emp_rows)
+    return pd.DataFrame(rows), pd.DataFrame(emp_rows)
 
-    return df_jobs, df_job_emps
+
+def appointment_count_from_job(job_detail: dict) -> int:
+    schedule = job_detail.get("schedule") or {}
+    appts = schedule.get("appointments") or []
+    return len(appts)
+
+
+def flatten_job_appointments(detail_job: dict):
+    """
+    Takes a job detail response (expanded with appointments) and returns normalized rows.
+    One row per (job_id, appointment_id, dispatched_employee_id). If no dispatched list, row with None.
+    """
+    rows = []
+    job_id = str(detail_job.get("id")) if detail_job.get("id") is not None else None
+    schedule = detail_job.get("schedule") or {}
+    appts = schedule.get("appointments") or []
+
+    for a in appts:
+        appt_id = a.get("id")
+        dispatched = a.get("dispatched_employees_ids") or []
+        if not dispatched:
+            dispatched = [None]
+        for emp_id in dispatched:
+            rows.append(
+                {
+                    "job_id": job_id,
+                    "appointment_id": appt_id,
+                    "start_time": a.get("start_time"),
+                    "end_time": a.get("end_time"),
+                    "anytime": bool(a.get("anytime")) if a.get("anytime") is not None else None,
+                    "arrival_window_minutes": a.get("arrival_window_minutes"),
+                    "dispatched_employee_id": emp_id,
+                }
+            )
+
+    return pd.DataFrame(rows)
 
 
 def flatten_customers(customers):
@@ -477,33 +483,36 @@ def flatten_customers(customers):
     for c in customers:
         rows.append(
             {
-                "customer_id": str(c.get("id")) if c.get("id") is not None else None,
+                "customer_id": c.get("id"),
                 "first_name": c.get("first_name"),
                 "last_name": c.get("last_name"),
                 "email": c.get("email"),
                 "mobile_number": c.get("mobile_number"),
-                "home_number": c.get("home_number"),
-                "work_number": c.get("work_number"),
                 "company": c.get("company"),
-                "notifications_enabled": c.get("notifications_enabled"),
-                "lead_source": c.get("lead_source"),
-                "notes": c.get("notes"),
                 "created_at": c.get("created_at"),
                 "updated_at": c.get("updated_at"),
-                "company_name": c.get("company_name"),
-                "company_id": str(c.get("company_id")) if c.get("company_id") is not None else None,
-                "tags": ",".join(c.get("tags", [])) if c.get("tags") else None,
             }
         )
     return pd.DataFrame(rows)
 
+
 def flatten_invoices(invoices):
-    rows = []
+    """
+    Returns:
+      df_invoices: one row per invoice (header-level)
+      df_items: one row per invoice item (line-level)
+    """
+    inv_rows = []
+    item_rows = []
+
     for inv in invoices:
-        rows.append(
+        invoice_id = str(inv.get("id")) if inv.get("id") is not None else None
+        job_id = str(inv.get("job_id")) if inv.get("job_id") is not None else None
+
+        inv_rows.append(
             {
-                "invoice_id": str(inv.get("id")) if inv.get("id") is not None else None,
-                "job_id": str(inv.get("job_id")) if inv.get("job_id") is not None else None,
+                "invoice_id": invoice_id,
+                "job_id": job_id,
                 "invoice_number": inv.get("invoice_number"),
                 "status": inv.get("status"),
                 "amount": inv.get("amount"),
@@ -518,20 +527,103 @@ def flatten_invoices(invoices):
                 "due_concept": inv.get("due_concept"),
             }
         )
+
+        for it in (inv.get("items") or []):
+            item_rows.append(
+                {
+                    "invoice_id": invoice_id,
+                    "job_id": job_id,
+                    "item_id": it.get("id"),
+                    "name": it.get("name"),
+                    "type": it.get("type"),
+                    "qty_in_hundredths": it.get("qty_in_hundredths"),
+                    "unit_cost": it.get("unit_cost"),
+                    "unit_price": it.get("unit_price"),
+                    "amount": it.get("amount"),
+                    "description": it.get("description"),
+                }
+            )
+
+    return pd.DataFrame(inv_rows), pd.DataFrame(item_rows)
+
+
+def flatten_employees(employees):
+    rows = []
+    for e in employees:
+        rows.append(
+            {
+                "employee_id": str(e.get("id")) if e.get("id") is not None else None,
+                "first_name": e.get("first_name"),
+                "last_name": e.get("last_name"),
+                "email": e.get("email"),
+                "mobile_number": e.get("mobile_number"),
+                "role": e.get("role"),
+                "avatar_url": e.get("avatar_url"),
+                "color_hex": e.get("color_hex"),
+                "company_id": e.get("company_id"),
+                "company_name": e.get("company_name"),
+            }
+        )
     return pd.DataFrame(rows)
 
+
+def flatten_estimates(estimates):
+    est_rows = []
+    opt_rows = []
+    emp_rows = []
+
+    for est in estimates:
+        estimate_id = str(est.get("id")) if est.get("id") is not None else None
+        customer = est.get("customer") or {}
+        schedule = est.get("schedule") or {}
+
+        est_rows.append(
+            {
+                "estimate_id": estimate_id,
+                "estimate_number": est.get("estimate_number"),
+                "work_status": est.get("work_status"),
+                "lead_source": est.get("lead_source"),
+                "customer_id": customer.get("id"),
+                "scheduled_start": schedule.get("scheduled_start"),
+                "scheduled_end": schedule.get("scheduled_end"),
+                "created_at": est.get("created_at"),
+                "updated_at": est.get("updated_at"),
+                "company_id": est.get("company_id"),
+                "company_name": est.get("company_name"),
+            }
+        )
+
+        for emp in (est.get("assigned_employees") or []):
+            emp_rows.append({"estimate_id": estimate_id, "employee_id": emp.get("id")})
+
+        for opt in (est.get("options") or []):
+            opt_rows.append(
+                {
+                    "option_id": opt.get("id"),
+                    "estimate_id": estimate_id,
+                    "name": opt.get("name"),
+                    "option_number": opt.get("option_number"),
+                    "total_amount": opt.get("total_amount"),
+                    "status": opt.get("status"),
+                    "approval_status": opt.get("approval_status"),
+                    "created_at": opt.get("created_at"),
+                    "updated_at": opt.get("updated_at"),
+                }
+            )
+
+    return pd.DataFrame(est_rows), pd.DataFrame(opt_rows), pd.DataFrame(emp_rows)
+
+
 # -----------------------------
-# Upsert helpers (DuckDB MERGE)
+# Upsert helpers
 # -----------------------------
-def _create_temp_incoming(conn: duckdb.DuckDBPyConnection, temp_name: str, df: pd.DataFrame):
-    # Register DF as a view, then materialize into TEMP TABLE for MERGE stability
-    conn.register("incoming_df", df)
-    conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_name} AS SELECT * FROM incoming_df")
-    conn.unregister("incoming_df")
+def _create_temp_incoming(conn: duckdb.DuckDBPyConnection, name: str, df: pd.DataFrame):
+    conn.register(name, df)
+
 
 def upsert_jobs(conn: duckdb.DuckDBPyConnection, df_jobs: pd.DataFrame):
     if df_jobs.empty:
-        print(f"[{_ts()}] RUN {RUN_ID} No jobs rows to upsert.")
+        print(f"[{_ts()}] RUN {RUN_ID} No job rows to upsert.")
         return
 
     _create_temp_incoming(conn, "jobs_incoming", df_jobs)
@@ -544,75 +636,54 @@ def upsert_jobs(conn: duckdb.DuckDBPyConnection, df_jobs: pd.DataFrame):
         WHEN MATCHED THEN UPDATE SET
             invoice_number = s.invoice_number,
             description = s.description,
+            customer_id = s.customer_id,
             work_status = s.work_status,
             total_amount = s.total_amount,
             outstanding_balance = s.outstanding_balance,
-            company_name = s.company_name,
-            company_id = s.company_id,
+            subtotal = s.subtotal,
+            tags = s.tags,
             created_at = s.created_at,
             updated_at = s.updated_at,
             completed_at = s.completed_at,
-            customer_id = s.customer_id,
-            num_appointments = s.num_appointments,
-            tags = s.tags
-
-        WHEN NOT MATCHED THEN INSERT (
-            job_id, invoice_number, description, work_status, total_amount, outstanding_balance,
-            company_name, company_id, created_at, updated_at, completed_at, customer_id, num_appointments, tags
-        ) VALUES (
-            s.job_id, s.invoice_number, s.description, s.work_status, s.total_amount, s.outstanding_balance,
-            s.company_name, s.company_id, s.created_at, s.updated_at, s.completed_at, s.customer_id, s.num_appointments, s.tags
-        )
+            scheduled_start = s.scheduled_start,
+            scheduled_end = s.scheduled_end,
+            num_appointments = s.num_appointments
+        WHEN NOT MATCHED THEN
+            INSERT (job_id, invoice_number, description, customer_id, work_status, total_amount, outstanding_balance, subtotal, tags,
+                    created_at, updated_at, completed_at, scheduled_start, scheduled_end, num_appointments)
+            VALUES (s.job_id, s.invoice_number, s.description, s.customer_id, s.work_status, s.total_amount, s.outstanding_balance, s.subtotal, s.tags,
+                    s.created_at, s.updated_at, s.completed_at, s.scheduled_start, s.scheduled_end, s.num_appointments)
         """
     )
-    print(f"[{_ts()}] RUN {RUN_ID} Upserted jobs: {len(df_jobs)} incoming rows.")
+
 
 def upsert_job_employees(conn: duckdb.DuckDBPyConnection, df_job_emps: pd.DataFrame):
     if df_job_emps.empty:
-        print(f"[{_ts()}] RUN {RUN_ID} No job_employees rows to upsert.")
         return
 
-    # Drop null keys
-    df_job_emps = df_job_emps.dropna(subset=["job_id", "employee_id"]).copy()
+    _create_temp_incoming(conn, "job_emps_incoming", df_job_emps)
 
-    # De-dupe within this batch (same job/employee can appear more than once)
-    df_job_emps = df_job_emps.drop_duplicates(subset=["job_id", "employee_id"])
-
-    _create_temp_incoming(conn, "job_employees_incoming", df_job_emps)
-
+    # Replace-by-key (job_id + employee_id)
     conn.execute(
         """
-        MERGE INTO job_employees AS t
-        USING job_employees_incoming AS s
-        ON t.job_id = s.job_id AND t.employee_id = s.employee_id
-        WHEN MATCHED THEN UPDATE SET
-            first_name = s.first_name,
-            last_name = s.last_name,
-            email = s.email,
-            mobile_number = s.mobile_number,
-            role = s.role,
-            avatar_url = s.avatar_url,
-            color_hex = s.color_hex,
-            company_id = s.company_id,
-            company_name = s.company_name,
-            updated_at = s.updated_at
-        WHEN NOT MATCHED THEN INSERT (
-            job_id, employee_id, first_name, last_name, email, mobile_number,
-            role, avatar_url, color_hex, company_id, company_name, updated_at
-        )
-        VALUES (
-            s.job_id, s.employee_id, s.first_name, s.last_name, s.email, s.mobile_number,
-            s.role, s.avatar_url, s.color_hex, s.company_id, s.company_name, s.updated_at
-        )
+        DELETE FROM job_employees
+        USING job_emps_incoming s
+        WHERE job_employees.job_id = s.job_id
+          AND job_employees.employee_id = s.employee_id
         """
     )
-
-    print(f"[{_ts()}] RUN {RUN_ID} Upserted job_employees: {len(df_job_emps)} incoming rows.")
+    conn.execute(
+        """
+        INSERT INTO job_employees (job_id, employee_id, first_name, last_name, email, mobile_number, color_hex, avatar_url, role)
+        SELECT job_id, employee_id, first_name, last_name, email, mobile_number, color_hex, avatar_url, role
+        FROM job_emps_incoming
+        """
+    )
 
 
 def upsert_customers(conn: duckdb.DuckDBPyConnection, df_customers: pd.DataFrame):
     if df_customers.empty:
-        print(f"[{_ts()}] RUN {RUN_ID} No customers rows to upsert.")
+        print(f"[{_ts()}] RUN {RUN_ID} No customer rows to upsert.")
         return
 
     _create_temp_incoming(conn, "customers_incoming", df_customers)
@@ -627,29 +698,15 @@ def upsert_customers(conn: duckdb.DuckDBPyConnection, df_customers: pd.DataFrame
             last_name = s.last_name,
             email = s.email,
             mobile_number = s.mobile_number,
-            home_number = s.home_number,
-            work_number = s.work_number,
             company = s.company,
-            notifications_enabled = s.notifications_enabled,
-            lead_source = s.lead_source,
-            notes = s.notes,
             created_at = s.created_at,
-            updated_at = s.updated_at,
-            company_name = s.company_name,
-            company_id = s.company_id,
-            tags = s.tags
-        WHEN NOT MATCHED THEN INSERT (
-            customer_id, first_name, last_name, email, mobile_number, home_number, work_number,
-            company, notifications_enabled, lead_source, notes, created_at, updated_at,
-            company_name, company_id, tags
-        ) VALUES (
-            s.customer_id, s.first_name, s.last_name, s.email, s.mobile_number, s.home_number, s.work_number,
-            s.company, s.notifications_enabled, s.lead_source, s.notes, s.created_at, s.updated_at,
-            s.company_name, s.company_id, s.tags
-        )
+            updated_at = s.updated_at
+        WHEN NOT MATCHED THEN
+            INSERT (customer_id, first_name, last_name, email, mobile_number, company, created_at, updated_at)
+            VALUES (s.customer_id, s.first_name, s.last_name, s.email, s.mobile_number, s.company, s.created_at, s.updated_at)
         """
     )
-    print(f"[{_ts()}] RUN {RUN_ID} Upserted customers: {len(df_customers)} incoming rows.")
+
 
 def upsert_invoices(conn: duckdb.DuckDBPyConnection, df_invoices: pd.DataFrame):
     if df_invoices.empty:
@@ -677,47 +734,208 @@ def upsert_invoices(conn: duckdb.DuckDBPyConnection, df_invoices: pd.DataFrame):
             invoice_date = s.invoice_date,
             display_due_concept = s.display_due_concept,
             due_concept = s.due_concept
-        WHEN NOT MATCHED THEN INSERT (
-            invoice_id, job_id, invoice_number, status, amount, subtotal, due_amount, due_at, paid_at,
-            sent_at, service_date, invoice_date, display_due_concept, due_concept
-        ) VALUES (
-            s.invoice_id, s.job_id, s.invoice_number, s.status, s.amount, s.subtotal, s.due_amount, s.due_at, s.paid_at,
-            s.sent_at, s.service_date, s.invoice_date, s.display_due_concept, s.due_concept
-        )
+        WHEN NOT MATCHED THEN
+            INSERT (invoice_id, job_id, invoice_number, status, amount, subtotal, due_amount, due_at, paid_at, sent_at, service_date, invoice_date, display_due_concept, due_concept)
+            VALUES (s.invoice_id, s.job_id, s.invoice_number, s.status, s.amount, s.subtotal, s.due_amount, s.due_at, s.paid_at, s.sent_at, s.service_date, s.invoice_date, s.display_due_concept, s.due_concept)
         """
     )
-    print(f"[{_ts()}] RUN {RUN_ID} Upserted invoices: {len(df_invoices)} incoming rows.")
 
-# -----------------------------
-# Main ingestion
-# -----------------------------
-def run_ingestion(min_interval_seconds: int = 3600):
-    if not API_KEY:
-        raise RuntimeError("HOUSECALLPRO_API_KEY is not set. Add it to your Render env vars.")
 
-    conn = duckdb.connect(DB_FILE)
-
-    if not _try_acquire_ingest_lock(conn):
-        conn.close()
+def upsert_employees(conn: duckdb.DuckDBPyConnection, df_employees: pd.DataFrame):
+    if df_employees.empty:
+        print(f"[{_ts()}] RUN {RUN_ID} No employees rows to upsert.")
         return
 
+    _create_temp_incoming(conn, "employees_incoming", df_employees)
+
+    conn.execute(
+        """
+        MERGE INTO employees AS t
+        USING employees_incoming AS s
+        ON t.employee_id = s.employee_id
+        WHEN MATCHED THEN UPDATE SET
+            first_name = s.first_name,
+            last_name = s.last_name,
+            email = s.email,
+            mobile_number = s.mobile_number,
+            role = s.role,
+            avatar_url = s.avatar_url,
+            color_hex = s.color_hex,
+            company_id = s.company_id,
+            company_name = s.company_name
+        WHEN NOT MATCHED THEN
+            INSERT (employee_id, first_name, last_name, email, mobile_number, role, avatar_url, color_hex, company_id, company_name)
+            VALUES (s.employee_id, s.first_name, s.last_name, s.email, s.mobile_number, s.role, s.avatar_url, s.color_hex, s.company_id, s.company_name)
+        """
+    )
+
+
+def upsert_job_appointments(conn: duckdb.DuckDBPyConnection, df_appts: pd.DataFrame):
+    if df_appts.empty:
+        return
+
+    _create_temp_incoming(conn, "job_appointments_incoming", df_appts)
+
+    conn.execute(
+        """
+        DELETE FROM job_appointments
+        USING job_appointments_incoming s
+        WHERE job_appointments.job_id = s.job_id
+          AND job_appointments.appointment_id = s.appointment_id
+          AND coalesce(job_appointments.dispatched_employee_id,'') = coalesce(s.dispatched_employee_id,'')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO job_appointments (job_id, appointment_id, start_time, end_time, anytime, arrival_window_minutes, dispatched_employee_id)
+        SELECT job_id, appointment_id, start_time, end_time, anytime, arrival_window_minutes, dispatched_employee_id
+        FROM job_appointments_incoming
+        """
+    )
+
+
+def upsert_invoice_items(conn: duckdb.DuckDBPyConnection, df_items: pd.DataFrame):
+    if df_items.empty:
+        return
+
+    _create_temp_incoming(conn, "invoice_items_incoming", df_items)
+
+    conn.execute(
+        """
+        DELETE FROM invoice_items
+        USING invoice_items_incoming s
+        WHERE invoice_items.invoice_id = s.invoice_id
+          AND coalesce(invoice_items.item_id,'') = coalesce(s.item_id,'')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO invoice_items (invoice_id, job_id, item_id, name, type, qty_in_hundredths, unit_cost, unit_price, amount, description)
+        SELECT invoice_id, job_id, item_id, name, type, qty_in_hundredths, unit_cost, unit_price, amount, description
+        FROM invoice_items_incoming
+        """
+    )
+
+
+def upsert_estimates(conn: duckdb.DuckDBPyConnection, df_estimates: pd.DataFrame):
+    if df_estimates.empty:
+        return
+
+    _create_temp_incoming(conn, "estimates_incoming", df_estimates)
+
+    conn.execute(
+        """
+        MERGE INTO estimates AS t
+        USING estimates_incoming AS s
+        ON t.estimate_id = s.estimate_id
+        WHEN MATCHED THEN UPDATE SET
+            estimate_number = s.estimate_number,
+            work_status = s.work_status,
+            lead_source = s.lead_source,
+            customer_id = s.customer_id,
+            scheduled_start = s.scheduled_start,
+            scheduled_end = s.scheduled_end,
+            created_at = s.created_at,
+            updated_at = s.updated_at,
+            company_id = s.company_id,
+            company_name = s.company_name
+        WHEN NOT MATCHED THEN
+            INSERT (estimate_id, estimate_number, work_status, lead_source, customer_id, scheduled_start, scheduled_end, created_at, updated_at, company_id, company_name)
+            VALUES (s.estimate_id, s.estimate_number, s.work_status, s.lead_source, s.customer_id, s.scheduled_start, s.scheduled_end, s.created_at, s.updated_at, s.company_id, s.company_name)
+        """
+    )
+
+
+def upsert_estimate_options(conn: duckdb.DuckDBPyConnection, df_options: pd.DataFrame):
+    if df_options.empty:
+        return
+
+    _create_temp_incoming(conn, "estimate_options_incoming", df_options)
+
+    conn.execute(
+        """
+        MERGE INTO estimate_options AS t
+        USING estimate_options_incoming AS s
+        ON t.option_id = s.option_id
+        WHEN MATCHED THEN UPDATE SET
+            estimate_id = s.estimate_id,
+            name = s.name,
+            option_number = s.option_number,
+            total_amount = s.total_amount,
+            status = s.status,
+            approval_status = s.approval_status,
+            created_at = s.created_at,
+            updated_at = s.updated_at
+        WHEN NOT MATCHED THEN
+            INSERT (option_id, estimate_id, name, option_number, total_amount, status, approval_status, created_at, updated_at)
+            VALUES (s.option_id, s.estimate_id, s.name, s.option_number, s.total_amount, s.status, s.approval_status, s.created_at, s.updated_at)
+        """
+    )
+
+
+def upsert_estimate_employees(conn: duckdb.DuckDBPyConnection, df_emp: pd.DataFrame):
+    if df_emp.empty:
+        return
+
+    _create_temp_incoming(conn, "estimate_employees_incoming", df_emp)
+
+    conn.execute(
+        """
+        DELETE FROM estimate_employees
+        USING estimate_employees_incoming s
+        WHERE estimate_employees.estimate_id = s.estimate_id
+          AND estimate_employees.employee_id = s.employee_id
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO estimate_employees (estimate_id, employee_id)
+        SELECT estimate_id, employee_id
+        FROM estimate_employees_incoming
+        """
+    )
+
+
+# -----------------------------
+# Main ingest
+# -----------------------------
+def run_ingestion(window_days: int = 60):
+    BACKFILL = os.environ.get("HCP_BACKFILL", "0") == "1"
+
+    now_utc = datetime.now(timezone.utc)
+    since_dt = now_utc - timedelta(days=window_days)
+    since_iso = since_dt.isoformat()
+
+    conn = duckdb.connect(DB_FILE)
     try:
         ensure_core_tables(conn)
 
-        if not BACKFILL and not _ingest_due(conn, min_interval_seconds):
-            print(f"[{_ts()}] RUN {RUN_ID} Not due yet. Skipping ingestion.")
+        if not acquire_lock(conn):
+            conn.close()
             return
-
-        now_utc = datetime.now(timezone.utc)
-        window_days = INGEST_WINDOW_DAYS
-        window_start = now_utc - timedelta(days=window_days)
-        since_iso = window_start.isoformat()
 
         print(f"[{_ts()}] RUN {RUN_ID} Ingest lock acquired. Starting ingestion...")
         print(f"[{_ts()}] RUN {RUN_ID} Mode: {'BACKFILL (full pull)' if BACKFILL else f'Incremental ({window_days}d window)'}")
 
         _set_metadata(conn, "last_window_start", since_iso)
         _set_metadata(conn, "last_window_end", now_utc.isoformat())
+
+        # Employees (used for technician cards + role/avatar/color)
+        print(f"[{_ts()}] RUN {RUN_ID} Fetching Employees...")
+        employees_data = fetch_all(BASE_URL_EMPLOYEES, key_name="employees", page_size=100)
+        df_employees = flatten_employees(employees_data)
+        upsert_employees(conn, df_employees)
+
+        # Estimates (used for lead turnover / win-loss / conversion KPIs)
+        print(f"[{_ts()}] RUN {RUN_ID} Fetching Estimates...")
+        if BACKFILL:
+            estimates_data = fetch_all(BASE_URL_ESTIMATES, key_name="estimates", page_size=100)
+        else:
+            estimates_data = fetch_all_recent(BASE_URL_ESTIMATES, key_name="estimates", since_iso=since_iso, page_size=100)
+        df_estimates, df_estimate_options, df_estimate_emps = flatten_estimates(estimates_data)
+        upsert_estimates(conn, df_estimates)
+        upsert_estimate_options(conn, df_estimate_options)
+        upsert_estimate_employees(conn, df_estimate_emps)
 
         # Jobs
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Jobs...")
@@ -728,15 +946,12 @@ def run_ingestion(min_interval_seconds: int = 3600):
 
         df_jobs, df_job_emps = flatten_jobs(jobs_data)
 
-        # Appointment counts (detail calls) only for recently completed jobs
-        print(f"[{_ts()}] RUN {RUN_ID} Fetching appointment counts for completed jobs (limited window)...")
+        # Appointments (detail fetch for recent COMPLETED jobs only)
         appt_counts = {}
 
         if not df_jobs.empty:
             detail_window_start = now_utc - timedelta(days=DETAIL_WINDOW_DAYS)
-            detail_since_iso = detail_window_start.isoformat()
 
-            # Use completed_at if available; otherwise fall back to updated_at; otherwise include and let it be small anyway
             def _is_recent(row) -> bool:
                 for col in ("completed_at", "updated_at"):
                     v = row.get(col)
@@ -747,19 +962,25 @@ def run_ingestion(min_interval_seconds: int = 3600):
                                 dt = dt.replace(tzinfo=timezone.utc)
                             return dt >= detail_window_start
                         except Exception:
-                            pass
-                return True  # if unparseable, keep it (still limited by overall df_jobs size)
+                            continue
+                return True
 
-            completed_df = df_jobs[df_jobs["work_status"].isin(COMPLETED_STATUSES)].copy()
-            if not completed_df.empty:
-                completed_df = completed_df[completed_df.apply(_is_recent, axis=1)]
+            completed_df = df_jobs[df_jobs["work_status"].isin(list(COMPLETED_STATUSES))]
+            completed_df = completed_df[completed_df.apply(_is_recent, axis=1)]
 
             completed_ids = completed_df["job_id"].dropna().tolist()
+            appt_frames = []
 
             for i, job_id in enumerate(completed_ids, start=1):
                 try:
                     detail = fetch_job_details(job_id)
+
+                    # Appointment count + appointment rows (for tech hours / dispatch KPIs)
                     appt_counts[job_id] = appointment_count_from_job(detail)
+                    df_appts = flatten_job_appointments(detail)
+                    if not df_appts.empty:
+                        appt_frames.append(df_appts)
+
                     if i % 10 == 0 or i == 1:
                         print(f"[{_ts()}] RUN {RUN_ID} Detail progress: {i}/{len(completed_ids)}")
                 except HTTPError as e:
@@ -773,11 +994,15 @@ def run_ingestion(min_interval_seconds: int = 3600):
                     print(f"[{_ts()}] RUN {RUN_ID} Batch throttle: processed {i}; sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s")
                     time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
+            # Upsert appointment rows (best-effort)
+            if appt_frames:
+                df_all_appts = pd.concat(appt_frames, ignore_index=True)
+                upsert_job_appointments(conn, df_all_appts)
+
             df_jobs["num_appointments"] = df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
-                    # Upsert Jobs + Job Employees
+            # Upsert Jobs + Job Employees
             upsert_jobs(conn, df_jobs)
             upsert_job_employees(conn, df_job_emps)
-
 
         # Customers
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Customers...")
@@ -790,43 +1015,30 @@ def run_ingestion(min_interval_seconds: int = 3600):
         # Invoices
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Invoices...")
         if BACKFILL:
-            invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
+            invoices_data = fetch_all(BASE_URL_INVOICES, key_name="jobs", page_size=100)
+            # NOTE: some HCP accounts return invoices under "invoices" not "jobs" (older API variants)
+            if not invoices_data:
+                invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
         else:
-            invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="invoices", since_iso=since_iso, page_size=100)
-        df_invoices = flatten_invoices(invoices_data)
+            invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="jobs", since_iso=since_iso, page_size=100)
+            if not invoices_data:
+                invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="invoices", since_iso=since_iso, page_size=100)
+
+        df_invoices, df_invoice_items = flatten_invoices(invoices_data)
 
         # Upsert into main tables (no drops)
         upsert_customers(conn, df_customers)
         upsert_invoices(conn, df_invoices)
+        upsert_invoice_items(conn, df_invoice_items)
 
-        update_last_refresh(conn)
-
-        print(f"[{_ts()}] RUN {RUN_ID} Ingestion complete. Data saved to {DB_FILE}")
+        _set_metadata(conn, "last_refresh", datetime.now(timezone.utc).isoformat())
+        print(f"[{_ts()}] RUN {RUN_ID} Ingestion complete.")
 
     finally:
-        try:
-            _release_ingest_lock(conn)
-            print(f"[{_ts()}] RUN {RUN_ID} Ingest lock released.")
-        finally:
-            conn.close()
+        release_lock(conn)
+        conn.close()
 
-def run_ingestion_forever(interval_seconds=3600):
-    print(f"[{_ts()}] RUN {RUN_ID} Starting ingestion loop: every {interval_seconds} seconds.")
-    while True:
-        start = time.time()
-        try:
-            run_ingestion(min_interval_seconds=interval_seconds)
-        except Exception as e:
-            print(f"[{_ts()}] RUN {RUN_ID} Periodic ingestion error: {e}")
-
-        elapsed = time.time() - start
-        sleep_for = max(0, interval_seconds - elapsed)
-        print(f"[{_ts()}] RUN {RUN_ID} Next loop wake in {sleep_for:.0f}s.")
-        time.sleep(sleep_for)
 
 if __name__ == "__main__":
-    loop = os.environ.get("INGEST_LOOP", "").strip() == "1"
-    if loop:
-        run_ingestion_forever(interval_seconds=3600)
-    else:
-        run_ingestion(min_interval_seconds=3600)
+    # Default: 60-day incremental window
+    run_ingestion(window_days=int(os.environ.get("HCP_WINDOW_DAYS", "60")))
