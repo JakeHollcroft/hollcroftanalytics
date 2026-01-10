@@ -25,6 +25,7 @@ BASE_URL_INVOICES = "https://api.housecallpro.com/invoices"
 # NEW
 BASE_URL_EMPLOYEES = "https://api.housecallpro.com/employees"
 BASE_URL_ESTIMATES = "https://api.housecallpro.com/estimates"
+BASE_URL_PRICEBOOK_SERVICES = "https://api.housecallpro.com/api/price_book/services"
 
 HEADERS = {
     "Authorization": f"Token {API_KEY}",
@@ -288,6 +289,44 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection):
         CREATE TABLE IF NOT EXISTS estimate_employees (
             estimate_id TEXT,
             employee_id TEXT
+        )
+        """
+    )
+
+
+    # ---- Price book (optional, used for better cost/duration estimation) ----
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pricebook_services (
+            service_uuid TEXT PRIMARY KEY,
+            name TEXT,
+            task_number TEXT,
+            description TEXT,
+            price DOUBLE,
+            cost DOUBLE,
+            duration INTEGER,
+            managed_by TEXT,
+            flat_rate_enabled BOOLEAN,
+            taxable BOOLEAN,
+            unit_of_measure TEXT,
+            category_name TEXT,
+            industry_name TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pricebook_materials (
+            material_uuid TEXT PRIMARY KEY,
+            name TEXT,
+            part_number TEXT,
+            unit_of_measure TEXT,
+            cost DOUBLE,
+            price DOUBLE,
+            taxable BOOLEAN,
+            material_category_name TEXT
         )
         """
     )
@@ -851,6 +890,177 @@ def upsert_invoice_items(conn: duckdb.DuckDBPyConnection, df_items: pd.DataFrame
     )
 
 
+def fetch_pricebook_services(page_size: int = 100):
+    """Fetch all price book services, plus any nested materials, from Housecall Pro."""
+    services: list[dict] = []
+    materials_by_uuid: dict[str, dict] = {}
+
+    page = 1
+    while True:
+        params = {
+            "page": page,
+            "page_size": page_size,
+            "sort_by": "created_at",
+            "sort_direction": "desc",
+        }
+        data = fetch_json(BASE_URL_PRICEBOOK_SERVICES, params=params)
+
+        # Response shapes vary by doc version; handle a few common ones.
+        page_items: list[dict] = []
+        total_pages = None
+
+        if isinstance(data, dict) and isinstance(data.get("checklists"), list) and data["checklists"]:
+            for chk in data["checklists"]:
+                if isinstance(chk, dict):
+                    page_items.extend(chk.get("data") or [])
+                    if total_pages is None:
+                        total_pages = chk.get("total_pages")
+        elif isinstance(data, dict):
+            page_items = data.get("data") or data.get("services") or []
+            total_pages = data.get("total_pages")
+
+        if not page_items:
+            break
+
+        services.extend(page_items)
+
+        # Gather nested materials (best-effort)
+        for svc in page_items:
+            sm = (svc or {}).get("service_materials") or {}
+            sm_data = sm.get("data") if isinstance(sm, dict) else []
+            if isinstance(sm_data, list):
+                for sm_row in sm_data:
+                    mat = (sm_row or {}).get("material") or {}
+                    uuid = mat.get("uuid") or mat.get("id")
+                    if uuid and uuid not in materials_by_uuid:
+                        materials_by_uuid[uuid] = {
+                            "material_uuid": uuid,
+                            "name": mat.get("name"),
+                            "part_number": mat.get("part_number"),
+                            "unit_of_measure": mat.get("unit_of_measure"),
+                            "cost": mat.get("cost"),
+                            "price": mat.get("price"),
+                            "taxable": mat.get("taxable"),
+                            "material_category_name": mat.get("material_category_name"),
+                        }
+
+        if total_pages is not None:
+            try:
+                if page >= int(total_pages):
+                    break
+            except Exception:
+                pass
+
+        # Fallback break condition if total_pages isn't provided
+        if len(page_items) < page_size:
+            break
+
+        page += 1
+
+    # Flatten services
+    rows = []
+    for svc in services:
+        uuid = (svc or {}).get("uuid") or (svc or {}).get("id")
+        if not uuid:
+            continue
+        cat = (svc or {}).get("category") or {}
+        ind = (svc or {}).get("industry") or {}
+        rows.append(
+            {
+                "service_uuid": uuid,
+                "name": svc.get("name"),
+                "task_number": svc.get("task_number"),
+                "description": svc.get("description"),
+                "price": svc.get("price"),
+                "cost": svc.get("cost"),
+                "duration": svc.get("duration"),
+                "managed_by": svc.get("managed_by"),
+                "flat_rate_enabled": svc.get("flat_rate_enabled"),
+                "taxable": svc.get("taxable"),
+                "unit_of_measure": svc.get("unit_of_measure"),
+                "category_name": cat.get("name") if isinstance(cat, dict) else None,
+                "industry_name": ind.get("name") if isinstance(ind, dict) else None,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+    df_services = pd.DataFrame(rows)
+    df_materials = pd.DataFrame(list(materials_by_uuid.values()))
+    return df_services, df_materials
+
+
+def upsert_pricebook_services(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame):
+    if df is None or df.empty:
+        return
+
+    cols = [
+        "service_uuid",
+        "name",
+        "task_number",
+        "description",
+        "price",
+        "cost",
+        "duration",
+        "managed_by",
+        "flat_rate_enabled",
+        "taxable",
+        "unit_of_measure",
+        "category_name",
+        "industry_name",
+        "updated_at",
+    ]
+    df2 = df.copy()
+    for c in cols:
+        if c not in df2.columns:
+            df2[c] = None
+    df2 = df2[cols]
+
+    conn.register("pb_services_staging", df2)
+    conn.execute("""
+        DELETE FROM pricebook_services
+        USING pb_services_staging
+        WHERE pricebook_services.service_uuid = pb_services_staging.service_uuid
+    """)
+    conn.execute("""
+        INSERT INTO pricebook_services
+        SELECT * FROM pb_services_staging
+    """)
+    conn.unregister("pb_services_staging")
+
+
+def upsert_pricebook_materials(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame):
+    if df is None or df.empty:
+        return
+
+    cols = [
+        "material_uuid",
+        "name",
+        "part_number",
+        "unit_of_measure",
+        "cost",
+        "price",
+        "taxable",
+        "material_category_name",
+    ]
+    df2 = df.copy()
+    for c in cols:
+        if c not in df2.columns:
+            df2[c] = None
+    df2 = df2[cols]
+
+    conn.register("pb_materials_staging", df2)
+    conn.execute("""
+        DELETE FROM pricebook_materials
+        USING pb_materials_staging
+        WHERE pricebook_materials.material_uuid = pb_materials_staging.material_uuid
+    """)
+    conn.execute("""
+        INSERT INTO pricebook_materials
+        SELECT * FROM pb_materials_staging
+    """)
+    conn.unregister("pb_materials_staging")
+
+
 def upsert_estimates(conn: duckdb.DuckDBPyConnection, df_estimates: pd.DataFrame):
     if df_estimates.empty:
         return
@@ -953,6 +1163,19 @@ def run_ingestion(
     try:
         ensure_core_tables(conn)
 
+
+        # --------------------------
+        # PRICE BOOK (optional)
+        # --------------------------
+        # Used to improve parts cost + service duration estimates for GP/HR.
+        try:
+            print("[INGEST] Fetching price book services/materials...")
+            df_pb_services, df_pb_materials = fetch_pricebook_services()
+            upsert_pricebook_services(conn, df_pb_services)
+            upsert_pricebook_materials(conn, df_pb_materials)
+            print(f"[INGEST] Price book: {len(df_pb_services)} services, {len(df_pb_materials)} materials")
+        except Exception as e:
+            print(f"[INGEST] Price book fetch skipped (non-fatal): {e}")
         # lock protects from overlapping runs across scheduler + button
         if not acquire_lock(conn):
             conn.close()
