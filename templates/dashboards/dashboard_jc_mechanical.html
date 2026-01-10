@@ -50,24 +50,6 @@
 
 <main id="main-content" role="main">
 
-{% set last_refresh = last_refresh|default('Unknown') %}
-{% set total_revenue_ytd_display = total_revenue_ytd_display|default('$0') %}
-{% set revenue_breakdown_ytd = revenue_breakdown_ytd|default([]) %}
-{% set dfo_pct = dfo_pct|default(0) %}
-{% set dfo_count = dfo_count|default(0) %}
-{% set completed_jobs = completed_jobs|default(0) %}
-{% set average_ticket_display = average_ticket_display|default('$0') %}
-{% set invoice_count = invoice_count|default(0) %}
-{% set first_time_completion_pct = first_time_completion_pct|default(0) %}
-{% set first_time_completion_target = first_time_completion_target|default(85) %}
-{% set repeat_visit_jobs = repeat_visit_jobs|default(0) %}
-{% set repeat_visit_pct = repeat_visit_pct|default(0) %}
-{% set repeat_visit_avg_appts = repeat_visit_avg_appts|default(0) %}
-{% set repeat_visit_avg_duration_mins = repeat_visit_avg_duration_mins|default(0) %}
-{% set repeat_jobs = repeat_jobs|default([]) %}
-{% set employee_cards = employee_cards|default([]) %}
-{% set dfo_monthly = dfo_monthly|default([]) %}
-
 {% set ftc_bar_class = 'bg-success' if first_time_completion_pct >= first_time_completion_target else 'bg-warning' if first_time_completion_pct >= 75 else 'bg-danger' %}
 
 <div class="jc-footer-refresh">
@@ -78,50 +60,53 @@
     <span>Last refreshed: {{ last_refresh }}</span>
 </div>
 
-<!-- REVENUE BREAKDOWN CARD -->
-<article class="jc-kpi-card jc-kpi-wide" aria-labelledby="kpi-revenue-breakdown-title">
-    <div class="jc-kpi-header">
-        <div class="jc-kpi-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 3v18h18"></path>
-                <path d="M19 9l-5 5-4-4-3 3"></path>
-            </svg>
-        </div>
-        <div class="jc-kpi-meta">
-            <div class="jc-kpi-label" id="kpi-revenue-breakdown-title">Revenue by Department (YTD)</div>
-            <div class="jc-kpi-badge">Revenue KPI</div>
-        </div>
-    </div>
+<!-- TOP KPI GRID -->
+<section class="jc-kpi-grid" aria-label="Top KPIs">
 
-    {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
-    <div class="jc-revenue-bars" role="list">
-        {% for r in revenue_breakdown_ytd %}
-        <div class="jc-revenue-bar-row" role="listitem">
-            <div class="jc-revenue-bar-label" title="{{ r.category }}">{{ r.category }}</div>
-
-            <div class="jc-revenue-bar-track" aria-hidden="true">
-                <div class="jc-revenue-bar-fill" data-width="{{ r.pct_of_total|round(1) }}">
-                    <span class="jc-revenue-bar-pct">{{ r.pct_of_total_display }}</span>
-                </div>
+    <!-- REVENUE TOTAL CARD -->
+    <article class="jc-kpi-card jc-kpi-revenue" aria-labelledby="rev-total-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
             </div>
-
-            <div class="jc-revenue-bar-value" title="{{ r.revenue_display }}">{{ r.revenue_display }}</div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">Total Revenue (YTD)</div>
+                <div class="jc-kpi-badge">Revenue KPI</div>
+            </div>
         </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="jc-empty-state">
-        <p>No revenue breakdown available.</p>
-    </div>
-    {% endif %}
+        
+        <div class="jc-kpi-value">
+            {{ total_revenue_ytd_display }}
+        </div>
+        
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Includes: paid, open, pending_payment</span>
+        </div>
+    </article>
 
-    <div class="jc-kpi-footer">
-        <span class="jc-kpi-note">Bar shows share of total revenue (YTD)</span>
-        <span class="jc-kpi-refresh">Last refresh: {{ last_refresh }}</span>
-    </div>
-</article>
-
-n revenue_breakdown_ytd %}
+    <!-- REVENUE BREAKDOWN CARD -->
+    <article class="jc-kpi-card jc-kpi-breakdown" aria-labelledby="rev-breakdown-title">
+        <div class="jc-kpi-header">
+            <div class="jc-kpi-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+            </div>
+            <div class="jc-kpi-meta">
+                <div class="jc-kpi-label">Revenue by Category (YTD)</div>
+                <div class="jc-kpi-badge">Breakdown</div>
+            </div>
+        </div>
+        
+        <div class="jc-revenue-bars">
+  {% if revenue_breakdown_ytd and revenue_breakdown_ytd|length > 0 %}
+    {% for r in revenue_breakdown_ytd %}
       <div class="jc-revenue-bar-row">
         <!-- NEW: tooltip shows full text -->
         <div class="jc-revenue-bar-label" title="{{ r.category }}">{{ r.category }}</div>
@@ -189,23 +174,7 @@ n revenue_breakdown_ytd %}
             </div>
         </div>
         
-        {% if dfo_monthly and dfo_monthly|length > 0 %}
-<div class="jc-mini-trend" aria-label="Monthly DFO trend">
-    <div class="jc-mini-title">Monthly DFO</div>
-    <div class="jc-mini-bars">
-        {% for m in dfo_monthly %}
-            {% set raw_h = (m.dfo_pct * 10)|round(0)|int %}
-            {% set h = 100 if raw_h > 100 else (8 if raw_h < 8 else raw_h) %}
-            <div class="jc-mini-bar" title="{{ m.month }}: {{ m.dfo_pct }}% ({{ m.dfo_count }}/{{ m.service_jobs }})">
-                <div class="jc-mini-bar-fill" style="height: {{ h }}%"></div>
-                <div class="jc-mini-bar-label">{{ m.month[5:] }}</div>
-            </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-<div class="jc-kpi-footer">
+        <div class="jc-kpi-footer">
             <span class="jc-kpi-note">Service jobs with no installation/change-out</span>
         </div>
     </article>
@@ -332,74 +301,71 @@ n revenue_breakdown_ytd %}
 
 </section>
 
-<!-- TECHNICIAN KPI CARDS -->
-<section class="jc-employee-section" aria-labelledby="emp-section-title">
-    <div class="jc-employee-header">
-        <div class="jc-employee-title-wrap">
-            <h2 id="emp-section-title" class="jc-section-title">Technician Performance (YTD)</h2>
-            <p class="jc-employee-subtitle">Completed jobs, average ticket, and callback rate per technician.</p>
-        </div>
-        <div class="jc-employee-legend">
-            <span class="jc-pill jc-pill-success">On target</span>
-            <span class="jc-pill jc-pill-warning">Watch</span>
-            <span class="jc-pill jc-pill-danger">Needs attention</span>
-        </div>
-    </div>
+<!-- Employee KPI CARDS SECTION -->
+<section class="jc-employee-section" aria-label="Technician KPIs">
+  <div class="jc-employee-header">
+    <h2 class="jc-employee-title">Technician KPI Cards</h2>
+<div class="jc-employee-subtitle">Completed Jobs + Avg Ticket (Overall, YTD) + Callback %</div>
 
+  </div>
+
+  <div class="jc-employee-grid">
     {% if employee_cards and employee_cards|length > 0 %}
-    <div class="jc-employee-grid">
-        {% for e in employee_cards %}
-        {% set emp_color = '#' ~ (e.color_hex|default('2aa7e0')) %}
-        <article class="jc-employee-card" style="--emp-accent: {{ emp_color }};">
-            <div class="jc-employee-top">
-                <div class="jc-employee-avatar">
-                    {% if e.avatar_url and ('add_image' not in e.avatar_url) %}
-                        <img src="{{ e.avatar_url }}" alt="{{ e.name }} avatar" loading="lazy">
-                    {% else %}
-                        <div class="jc-employee-initials">{{ (e.name or 'Tech')[:1] | upper }}</div>
-                    {% endif %}
-                </div>
+      {% for e in employee_cards %}
+        <article class="jc-employee-card">
+          <div class="jc-employee-top">
+            {% if e.avatar_url %}
+              <img class="jc-employee-avatar" src="{{ e.avatar_url }}" alt="{{ e.name }} avatar" loading="lazy">
+            {% else %}
+              <div class="jc-employee-avatar jc-employee-avatar-fallback">
+                {{ (e.name[:1] if e.name else "?")|upper }}
+              </div>
+            {% endif %}
 
-                <div class="jc-employee-meta">
-                    <div class="jc-employee-name">{{ e.name }}</div>
-                    <div class="jc-employee-role">{{ e.role }}</div>
-                </div>
+            <div class="jc-employee-meta">
+  <div class="jc-employee-name-row">
+    <div class="jc-employee-name">{{ e.name }}</div>
+    <span class="jc-employee-role-pill">{{ e.role }}</span>
+  </div>
+  <div class="jc-employee-role">Completed Jobs + Avg Ticket (Service)</div>
+</div>
 
-                <div class="jc-employee-accent" aria-hidden="true"></div>
-            </div>
+          </div>
 
-            <div class="jc-employee-kpis">
-                <div class="jc-emp-kpi">
-                    <div class="jc-emp-kpi-label">Completed jobs</div>
-                    <div class="jc-emp-kpi-value">{{ e.completed_jobs_ytd }}</div>
-                    <div class="jc-emp-kpi-sub">YTD</div>
-                </div>
+          <div class="jc-employee-kpis">
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Completed Jobs (YTD)</div>
+    <div class="jc-employee-kpi-value">{{ e.completed_jobs_ytd }}</div>
+  </div>
 
-                <div class="jc-emp-kpi">
-                    <div class="jc-emp-kpi-label">Average ticket</div>
-                    <div class="jc-emp-kpi-value jc-kpi-{{ e.avg_ticket_overall_status }}">{{ e.avg_ticket_overall_display }}</div>
-                    <div class="jc-emp-kpi-sub">{{ e.overall_invoice_count }} invoices</div>
-                </div>
-
-                <div class="jc-emp-kpi">
-                    <div class="jc-emp-kpi-label">Callback rate</div>
-                    <div class="jc-emp-kpi-value jc-kpi-{{ e.callback_status }}">{{ e.callback_pct_display }}</div>
-                    <div class="jc-emp-kpi-sub">{{ e.callback_jobs }} callbacks</div>
-                </div>
-            </div>
-
-            <div class="jc-employee-footer">
-                Avg ticket uses invoice totals. Callback rate is repeat-visit completed jobs / completed jobs.
-            </div>
-        </article>
-        {% endfor %}
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Avg Ticket (Overall)</div>
+    <div class="jc-employee-kpi-value {{ 'is-good' if e.avg_ticket_overall_status == 'success' else 'is-bad' }}">
+      {{ e.avg_ticket_overall_display }}
     </div>
+    <div class="jc-employee-kpi-subnote">{{ e.overall_invoice_count }} invoices</div>
+  </div>
+
+  <div class="jc-employee-kpi">
+    <div class="jc-employee-kpi-label">Callback % (YTD)</div>
+    <div class="jc-employee-kpi-value
+      {{ 'is-good' if e.callback_status == 'success' else 'is-warn' if e.callback_status == 'warning' else 'is-bad' }}">
+      {{ e.callback_pct_display }}
+    </div>
+    <div class="jc-employee-kpi-subnote">{{ e.callback_jobs_ytd }} callback jobs</div>
+  </div>
+</div>
+
+
+        </article>
+      {% endfor %}
     {% else %}
-        <div class="jc-empty-state"><p>No employee performance data available yet.</p></div>
+      <div class="jc-empty-state">
+        <p>No employee assignment data yet. Run ingestion after adding job_employees.</p>
+      </div>
     {% endif %}
+  </div>
 </section>
-
-
 
 
 <!-- ROADMAP SECTION
@@ -669,6 +635,16 @@ n revenue_breakdown_ytd %}
             bar.style.width = width + '%';
         }
     });
+
+    // FTC gauge circle animation
+    const gaugeCircle = document.querySelector('.jc-gauge-fill');
+    if (gaugeCircle) {
+        const percent = parseFloat(gaugeCircle.getAttribute('data-percent') || 0);
+        const circumference = 2 * Math.PI * 80; // 2 * π * radius
+        const dashValue = (percent / 100) * circumference;
+        gaugeCircle.style.strokeDasharray = dashValue + ' ' + circumference;
+    }
+
     // Roadmap progress calculation
     (function () {
         const items = Array.from(document.querySelectorAll(".jc-task-item"));
