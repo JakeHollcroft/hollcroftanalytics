@@ -286,6 +286,29 @@ def ensure_core_tables(conn: duckdb.DuckDBPyConnection):
         """
     )
 
+def should_run_min_interval(conn: duckdb.DuckDBPyConnection, min_interval_seconds: int) -> bool:
+    """
+    Returns True if enough time has elapsed since last_refresh.
+    If last_refresh is missing/unparseable, we run.
+    """
+    if min_interval_seconds <= 0:
+        return True
+
+    last_refresh = _get_metadata(conn, "last_refresh")
+    if not last_refresh:
+        return True
+
+    try:
+        dt = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+
+    now = datetime.now(timezone.utc)
+    age_seconds = (now - dt).total_seconds()
+    return age_seconds >= float(min_interval_seconds)
+
 
 def _get_metadata(conn: duckdb.DuckDBPyConnection, key: str) -> str | None:
     try:
@@ -899,7 +922,16 @@ def upsert_estimate_employees(conn: duckdb.DuckDBPyConnection, df_emp: pd.DataFr
 # -----------------------------
 # Main ingest
 # -----------------------------
-def run_ingestion(window_days: int = 60):
+def run_ingestion(
+    window_days: int = 60,
+    min_interval_seconds: int = 3600,
+):
+    """
+    window_days: how far back to pull for incremental updates
+    min_interval_seconds: if > 0, skip if last_refresh was too recent.
+      - scheduler uses 3600
+      - button 'force' passes 0 to bypass interval (still lock-protected)
+    """
     BACKFILL = os.environ.get("HCP_BACKFILL", "0") == "1"
 
     now_utc = datetime.now(timezone.utc)
@@ -910,8 +942,14 @@ def run_ingestion(window_days: int = 60):
     try:
         ensure_core_tables(conn)
 
+        # lock protects from overlapping runs across scheduler + button
         if not acquire_lock(conn):
             conn.close()
+            return
+
+        # Min-interval check (only after lock, so two schedulers don't both run)
+        if not should_run_min_interval(conn, int(min_interval_seconds)):
+            print(f"[{_ts()}] RUN {RUN_ID} Skipping ingestion (min interval {min_interval_seconds}s not reached).")
             return
 
         print(f"[{_ts()}] RUN {RUN_ID} Ingest lock acquired. Starting ingestion...")
@@ -920,13 +958,13 @@ def run_ingestion(window_days: int = 60):
         _set_metadata(conn, "last_window_start", since_iso)
         _set_metadata(conn, "last_window_end", now_utc.isoformat())
 
-        # Employees (used for technician cards + role/avatar/color)
+        # Employees
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Employees...")
         employees_data = fetch_all(BASE_URL_EMPLOYEES, key_name="employees", page_size=100)
         df_employees = flatten_employees(employees_data)
         upsert_employees(conn, df_employees)
 
-        # Estimates (used for lead turnover / win-loss / conversion KPIs)
+        # Estimates
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Estimates...")
         if BACKFILL:
             estimates_data = fetch_all(BASE_URL_ESTIMATES, key_name="estimates", page_size=100)
@@ -946,9 +984,8 @@ def run_ingestion(window_days: int = 60):
 
         df_jobs, df_job_emps = flatten_jobs(jobs_data)
 
-        # Appointments (detail fetch for recent COMPLETED jobs only)
+        # Appointments (detail fetch for recent completed)
         appt_counts = {}
-
         if not df_jobs.empty:
             detail_window_start = now_utc - timedelta(days=DETAIL_WINDOW_DAYS)
 
@@ -975,7 +1012,6 @@ def run_ingestion(window_days: int = 60):
                 try:
                     detail = fetch_job_details(job_id)
 
-                    # Appointment count + appointment rows (for tech hours / dispatch KPIs)
                     appt_counts[job_id] = appointment_count_from_job(detail)
                     df_appts = flatten_job_appointments(detail)
                     if not df_appts.empty:
@@ -983,6 +1019,7 @@ def run_ingestion(window_days: int = 60):
 
                     if i % 10 == 0 or i == 1:
                         print(f"[{_ts()}] RUN {RUN_ID} Detail progress: {i}/{len(completed_ids)}")
+
                 except HTTPError as e:
                     print(f"[{_ts()}] RUN {RUN_ID} Warning: HTTP error for {job_id}: {e}")
                     appt_counts[job_id] = 0
@@ -994,13 +1031,12 @@ def run_ingestion(window_days: int = 60):
                     print(f"[{_ts()}] RUN {RUN_ID} Batch throttle: processed {i}; sleeping {DETAIL_BATCH_PAUSE_SEC:.2f}s")
                     time.sleep(DETAIL_BATCH_PAUSE_SEC)
 
-            # Upsert appointment rows (best-effort)
             if appt_frames:
                 df_all_appts = pd.concat(appt_frames, ignore_index=True)
                 upsert_job_appointments(conn, df_all_appts)
 
             df_jobs["num_appointments"] = df_jobs["job_id"].map(appt_counts).fillna(0).astype(int)
-            # Upsert Jobs + Job Employees
+
             upsert_jobs(conn, df_jobs)
             upsert_job_employees(conn, df_job_emps)
 
@@ -1015,18 +1051,16 @@ def run_ingestion(window_days: int = 60):
         # Invoices
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Invoices...")
         if BACKFILL:
-            invoices_data = fetch_all(BASE_URL_INVOICES, key_name="jobs", page_size=100)
-            # NOTE: some HCP accounts return invoices under "invoices" not "jobs" (older API variants)
+            invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
             if not invoices_data:
-                invoices_data = fetch_all(BASE_URL_INVOICES, key_name="invoices", page_size=100)
+                invoices_data = fetch_all(BASE_URL_INVOICES, key_name="jobs", page_size=100)
         else:
-            invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="jobs", since_iso=since_iso, page_size=100)
+            invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="invoices", since_iso=since_iso, page_size=100)
             if not invoices_data:
-                invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="invoices", since_iso=since_iso, page_size=100)
+                invoices_data = fetch_all_recent(BASE_URL_INVOICES, key_name="jobs", since_iso=since_iso, page_size=100)
 
         df_invoices, df_invoice_items = flatten_invoices(invoices_data)
 
-        # Upsert into main tables (no drops)
         upsert_customers(conn, df_customers)
         upsert_invoices(conn, df_invoices)
         upsert_invoice_items(conn, df_invoice_items)
