@@ -13,7 +13,10 @@ def hr(title):
     print(title)
     print("="*110)
 
-hr("0) TABLE INVENTORY (relevant to GP/HR)")
+# --------------------------------------------------------------------------------------
+# 0) TABLE INVENTORY
+# --------------------------------------------------------------------------------------
+hr("0) TABLE INVENTORY")
 print(conn.execute("""
 SELECT table_name
 FROM information_schema.tables
@@ -21,6 +24,9 @@ WHERE table_schema = 'main'
 ORDER BY table_name
 """).df())
 
+# --------------------------------------------------------------------------------------
+# 1) QUICK SANITY: money fields look like CENTS?
+# --------------------------------------------------------------------------------------
 hr("1) QUICK SANITY: money fields look like CENTS?")
 print(conn.execute("""
 SELECT
@@ -28,127 +34,241 @@ SELECT
   (SELECT MAX(amount) FROM invoice_items) AS max_item_amount_raw,
   (SELECT MAX(unit_cost) FROM invoice_items) AS max_item_unit_cost_raw
 """).df())
-print("\nIf these maxima are in the tens/hundreds of thousands, they are almost certainly CENTS (e.g., 530500 = $5,305).")
 
-hr("2) PRICEBOOK COVERAGE (counts + cost=0 rate)")
-for t in ["pricebook_services","pricebook_materials"]:
-    try:
-        df = conn.execute(f"""
-        SELECT
-          COUNT(*) AS n,
-          SUM(CASE WHEN cost IS NULL OR cost=0 THEN 1 ELSE 0 END) AS cost_zero_or_null
-        FROM {t}
-        """).df()
-        print(f"\n{t}")
-        print(df)
-    except Exception as e:
-        print(f"\n{t}: not found ({e})")
-
-hr("3) INVOICE_ITEMS: cost=0 rate + qty profile")
+# --------------------------------------------------------------------------------------
+# 2) INVOICE STATUS DISTRIBUTION (very important for "billed only")
+# --------------------------------------------------------------------------------------
+hr("2) INVOICE STATUS DISTRIBUTION")
 print(conn.execute("""
-SELECT
-  COUNT(*) AS items_total,
-  SUM(CASE WHEN unit_cost IS NULL THEN 1 ELSE 0 END) AS unit_cost_null,
-  SUM(CASE WHEN unit_cost=0 THEN 1 ELSE 0 END) AS unit_cost_zero,
-  SUM(CASE WHEN qty_in_hundredths IS NULL THEN 1 ELSE 0 END) AS qty_null,
-  SUM(CASE WHEN qty_in_hundredths=0 THEN 1 ELSE 0 END) AS qty_zero,
-  SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS amount_null,
-  SUM(CASE WHEN amount=0 THEN 1 ELSE 0 END) AS amount_zero
-FROM invoice_items
+SELECT LOWER(TRIM(status)) AS status_norm, COUNT(*) AS n, SUM(amount)/100.0 AS sum_amount_dollars
+FROM invoices
+GROUP BY 1
+ORDER BY n DESC
 """).df())
 
-hr("4) TOP 30 'labor' lines with qty + cost/price (RAW)")
+# --------------------------------------------------------------------------------------
+# 3) BILLED-ONLY INVOICES (YTD) - the exact population your KPIs are using
+#    billed-only means: status IN ('open','pending_payment') and invoice_date >= Jan 1
+# --------------------------------------------------------------------------------------
+hr("3) BILLED-ONLY INVOICES (YTD) POPULATION")
 print(conn.execute("""
-SELECT type, name, qty_in_hundredths, unit_cost, unit_price, amount
-FROM invoice_items
-WHERE type='labor'
-ORDER BY invoice_id DESC
-LIMIT 30
-""").df())
-
-hr("5) NAME-MATCH CHECK: do labor line names appear in pricebook_services?")
-try:
-    df_match = conn.execute("""
-    WITH labor_names AS (
-      SELECT DISTINCT LOWER(TRIM(name)) AS name_norm
-      FROM invoice_items
-      WHERE type='labor' AND name IS NOT NULL
-    ),
-    svc AS (
-      SELECT DISTINCT LOWER(TRIM(name)) AS name_norm, cost
-      FROM pricebook_services
-    )
-    SELECT
-      (SELECT COUNT(*) FROM labor_names) AS distinct_labor_names,
-      (SELECT COUNT(*) FROM labor_names ln JOIN svc s USING(name_norm)) AS labor_names_matched_to_pricebook,
-      (SELECT COUNT(*) FROM labor_names ln LEFT JOIN svc s USING(name_norm) WHERE s.name_norm IS NULL) AS labor_names_unmatched
-    """).df()
-    print(df_match)
-except Exception as e:
-    print("pricebook_services not available or query failed:", e)
-
-hr("6) PER-JOB GP/HR (last 50 completed jobs) using CENTS->DOLLARS + billed hours from labor qty")
-print(conn.execute("""
-WITH ytd_jobs AS (
-  SELECT job_id
-  FROM jobs
-  WHERE completed_at >= date_trunc('year', now())
-),
-items AS (
+WITH billed AS (
   SELECT
-    ii.job_id,
-    LOWER(TRIM(ii.type)) AS type_norm,
-    LOWER(TRIM(ii.name)) AS name_norm,
-    (COALESCE(ii.qty_in_hundredths,0) / 100.0) AS qty,
-    (COALESCE(ii.amount,0) / 100.0) AS revenue_dollars,
-    (COALESCE(ii.unit_cost,0) / 100.0) AS unit_cost_dollars
-  FROM invoice_items ii
-  JOIN ytd_jobs yj ON yj.job_id = ii.job_id
-),
-svc AS (
-  SELECT LOWER(TRIM(name)) AS name_norm, (COALESCE(cost,0)/100.0) AS pb_cost
-  FROM pricebook_services
-),
-mat AS (
-  SELECT LOWER(TRIM(name)) AS name_norm, (COALESCE(cost,0)/100.0) AS pb_cost
-  FROM pricebook_materials
-),
-items_costed AS (
-  SELECT
-    i.*,
-    CASE
-      WHEN i.unit_cost_dollars > 0 THEN i.unit_cost_dollars
-      WHEN i.type_norm='labor' THEN COALESCE(s.pb_cost,0)
-      WHEN i.type_norm='material' THEN COALESCE(m.pb_cost,0)
-      ELSE 0
-    END AS unit_cost_eff
-  FROM items i
-  LEFT JOIN svc s ON i.type_norm='labor' AND i.name_norm = s.name_norm
-  LEFT JOIN mat m ON i.type_norm='material' AND i.name_norm = m.name_norm
-),
-job_rollup AS (
-  SELECT
-    j.job_id,
-    SUM(revenue_dollars) AS job_revenue,
-    SUM(unit_cost_eff * qty) AS job_cost,
-    SUM(CASE WHEN type_norm='labor' THEN qty ELSE 0 END) AS billed_hours,
-    SUM(CASE WHEN unit_cost_dollars=0 AND unit_cost_eff>0 THEN 1 ELSE 0 END) AS backfilled_lines,
-    COUNT(*) AS total_lines
-  FROM items_costed ic
-  JOIN jobs j ON j.job_id = ic.job_id
-  GROUP BY 1
+    invoice_id,
+    job_id,
+    LOWER(TRIM(status)) AS status_norm,
+    invoice_number,
+    invoice_date,
+    service_date,
+    paid_at,
+    amount/100.0 AS amount_dollars
+  FROM invoices
+  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
+    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
 )
 SELECT
-  job_id,
-  job_revenue,
-  job_cost,
-  (job_revenue - job_cost) AS job_gp,
-  billed_hours,
-  CASE WHEN billed_hours > 0 THEN (job_revenue - job_cost) / billed_hours ELSE 0 END AS gp_per_billed_hour,
-  backfilled_lines,
-  total_lines
-FROM job_rollup
-ORDER BY job_id DESC
+  COUNT(*) AS billed_invoice_count,
+  SUM(amount_dollars) AS billed_invoice_sum_dollars,
+  SUM(CASE WHEN job_id IS NULL OR TRIM(job_id)='' THEN 1 ELSE 0 END) AS billed_missing_job_id,
+  SUM(CASE WHEN invoice_date IS NULL OR TRIM(invoice_date)='' THEN 1 ELSE 0 END) AS billed_missing_invoice_date,
+  SUM(CASE WHEN service_date IS NULL OR TRIM(service_date)='' THEN 1 ELSE 0 END) AS billed_missing_service_date
+FROM billed
+""").df())
+
+hr("3a) SAMPLE BILLED-ONLY INVOICES (YTD) - check job_id + dates")
+print(conn.execute("""
+SELECT
+  invoice_id, invoice_number, job_id, LOWER(TRIM(status)) AS status_norm,
+  invoice_date, service_date, paid_at,
+  amount/100.0 AS amount_dollars
+FROM invoices
+WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
+  AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+ORDER BY TRY_CAST(invoice_date AS TIMESTAMP) DESC
+LIMIT 50
+""").df())
+
+# --------------------------------------------------------------------------------------
+# 4) JOIN COVERAGE: billed invoices -> jobs -> job_employees
+#    This will explain why tech cards show 0 invoices if the join is failing.
+# --------------------------------------------------------------------------------------
+hr("4) JOIN COVERAGE: billed invoices -> jobs -> job_employees")
+print(conn.execute("""
+WITH billed AS (
+  SELECT invoice_id, job_id, amount/100.0 AS amount_dollars
+  FROM invoices
+  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
+    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+),
+billed_jobs AS (
+  SELECT b.*, j.tags
+  FROM billed b
+  LEFT JOIN jobs j ON j.job_id = b.job_id
+),
+billed_jobs_emps AS (
+  SELECT bj.*, je.employee_id
+  FROM billed_jobs bj
+  LEFT JOIN job_employees je ON je.job_id = bj.job_id
+)
+SELECT
+  COUNT(*) AS billed_invoices,
+  SUM(CASE WHEN tags IS NULL THEN 1 ELSE 0 END) AS billed_missing_job_row,
+  SUM(CASE WHEN employee_id IS NULL THEN 1 ELSE 0 END) AS billed_missing_employee_assignment,
+  COUNT(DISTINCT job_id) AS distinct_jobs_in_billed,
+  COUNT(DISTINCT employee_id) AS distinct_employees_touched
+FROM billed_jobs_emps
+""").df())
+
+hr("4a) SAMPLE ROWS where billed invoices have NO matching job row (job_id not found in jobs)")
+print(conn.execute("""
+WITH billed AS (
+  SELECT invoice_id, job_id, invoice_number, invoice_date, amount/100.0 AS amount_dollars
+  FROM invoices
+  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
+    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+)
+SELECT b.*
+FROM billed b
+LEFT JOIN jobs j ON j.job_id = b.job_id
+WHERE j.job_id IS NULL
+LIMIT 50
+""").df())
+
+hr("4b) SAMPLE ROWS where billed invoices DO match jobs but have NO assigned employees")
+print(conn.execute("""
+WITH billed AS (
+  SELECT invoice_id, job_id, invoice_number, invoice_date, amount/100.0 AS amount_dollars
+  FROM invoices
+  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
+    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+),
+bj AS (
+  SELECT b.*, j.tags
+  FROM billed b
+  JOIN jobs j ON j.job_id = b.job_id
+)
+SELECT bj.*
+FROM bj
+LEFT JOIN job_employees je ON je.job_id = bj.job_id
+WHERE je.employee_id IS NULL
+LIMIT 50
+""").df())
+
+# --------------------------------------------------------------------------------------
+# 5) TAG AUDIT (what tags actually exist on billed invoice jobs)
+# --------------------------------------------------------------------------------------
+hr("5) TAG AUDIT: distinct tags on billed invoice jobs (raw tags strings)")
+print(conn.execute("""
+WITH billed_jobs AS (
+  SELECT DISTINCT j.tags
+  FROM invoices i
+  JOIN jobs j ON j.job_id = i.job_id
+  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
+    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+)
+SELECT tags
+FROM billed_jobs
+ORDER BY tags
+LIMIT 200
+""").df())
+
+# --------------------------------------------------------------------------------------
+# 6) CLASSIFICATION CHECK: how many billed invoices are being tagged as service vs install
+#    This mirrors the logic in the KPI code (service excludes install/change-out).
+# --------------------------------------------------------------------------------------
+hr("6) CLASSIFICATION CHECK: billed invoices -> service vs install buckets")
+print(conn.execute("""
+WITH billed AS (
+  SELECT i.invoice_id, i.job_id, i.amount/100.0 AS amount_dollars
+  FROM invoices i
+  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
+    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+),
+bj AS (
+  SELECT b.*, LOWER(COALESCE(j.tags,'')) AS tags_norm
+  FROM billed b
+  LEFT JOIN jobs j ON j.job_id = b.job_id
+),
+flags AS (
+  SELECT *,
+    CASE
+      WHEN tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%' THEN 1
+      ELSE 0
+    END AS is_install,
+    CASE
+      WHEN (tags_norm LIKE '%service%' OR tags_norm LIKE '%demand%')
+           AND NOT (tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%')
+      THEN 1 ELSE 0
+    END AS is_service
+  FROM bj
+)
+SELECT
+  SUM(is_service) AS service_invoice_count,
+  SUM(CASE WHEN is_service=1 THEN amount_dollars ELSE 0 END) AS service_revenue,
+  SUM(is_install) AS install_invoice_count,
+  SUM(CASE WHEN is_install=1 THEN amount_dollars ELSE 0 END) AS install_revenue,
+  SUM(CASE WHEN is_service=0 AND is_install=0 THEN 1 ELSE 0 END) AS unclassified_count,
+  SUM(CASE WHEN is_service=0 AND is_install=0 THEN amount_dollars ELSE 0 END) AS unclassified_revenue
+FROM flags
+""").df())
+
+hr("6a) SAMPLE unclassified billed invoices (these cause service=0 invoices like your screenshot)")
+print(conn.execute("""
+WITH billed AS (
+  SELECT i.invoice_id, i.invoice_number, i.job_id, i.amount/100.0 AS amount_dollars
+  FROM invoices i
+  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
+    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+),
+bj AS (
+  SELECT b.*, LOWER(COALESCE(j.tags,'')) AS tags_norm
+  FROM billed b
+  LEFT JOIN jobs j ON j.job_id = b.job_id
+),
+flags AS (
+  SELECT *,
+    CASE
+      WHEN tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%' THEN 1
+      ELSE 0
+    END AS is_install,
+    CASE
+      WHEN (tags_norm LIKE '%service%' OR tags_norm LIKE '%demand%')
+           AND NOT (tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%')
+      THEN 1 ELSE 0
+    END AS is_service
+  FROM bj
+)
+SELECT invoice_id, invoice_number, job_id, amount_dollars, tags_norm
+FROM flags
+WHERE is_service=0 AND is_install=0
+LIMIT 100
+""").df())
+
+# --------------------------------------------------------------------------------------
+# 7) TECH ATTRIBUTION CHECK (why tech cards show 0 invoices)
+# --------------------------------------------------------------------------------------
+hr("7) TECH ATTRIBUTION CHECK: billed invoices that actually map to job_employees")
+print(conn.execute("""
+WITH billed AS (
+  SELECT i.invoice_id, i.job_id, TRY_CAST(i.invoice_date AS DATE) AS inv_date,
+         i.amount/100.0 AS amount_dollars
+  FROM invoices i
+  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
+    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+),
+billed_emp AS (
+  SELECT b.*, je.employee_id
+  FROM billed b
+  JOIN job_employees je ON je.job_id = b.job_id
+)
+SELECT
+  employee_id,
+  COUNT(DISTINCT invoice_id) AS invoices,
+  SUM(amount_dollars) AS revenue,
+  COUNT(DISTINCT inv_date) AS distinct_days_with_invoices
+FROM billed_emp
+GROUP BY 1
+ORDER BY revenue DESC
 LIMIT 50
 """).df())
 
