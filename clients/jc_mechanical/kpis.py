@@ -1313,3 +1313,12 @@ def get_refresh_status():
 
     finally:
         conn.close()
+
+# Backwards-compatible alias used by app.py
+
+def get_dashboard_kpis_safe():
+    """Compatibility wrapper.
+
+    Returns the full KPI payload expected by dashboard templates.
+    """
+    return get_dashboard_kpis()
