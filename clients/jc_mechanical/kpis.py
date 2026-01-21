@@ -4,81 +4,33 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import duckdb
+
+def safe_exec(conn, sql, params=None):
+    """Execute SQL but ignore failures (useful when running in read-only mode)."""
+    try:
+        if params is None:
+            return conn.execute(sql)
+        return conn.execute(sql, params)
+    except Exception:
+        return None
+
 import pandas as pd
 
-PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "/var/data"))
+# ---- Persistence / DuckDB location ----
+def _resolve_persist_dir() -> Path:
+    env = os.environ.get("PERSIST_DIR")
+    if env:
+        return Path(env)
+    # Render persistent disk commonly mounts at /var/data
+    if Path("/var/data").exists():
+        return Path("/var/data")
+    # Fallback: project root (works for local dev)
+    return Path(__file__).resolve().parents[2]
+
+PERSIST_DIR = _resolve_persist_dir()
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
-
-
-def _base_payload() -> dict:
-    """Baseline keys so templates never see UndefinedError."""
-    return {
-        # FTC / Repeat visits
-        "first_time_completion_pct": 0.0,
-        "first_time_completion_target": 85,
-        "first_time_completed": 0,
-        "repeat_visit_completed": 0,
-        "completed_jobs": 0,
-        "repeat_visit_pct": 0.0,
-        "repeat_jobs": [],
-
-        # Revenue
-        "total_revenue_ytd": 0.0,
-        "total_revenue_ytd_display": "$0",
-        "revenue_breakdown_ytd": [],
-
-        # Avg ticket (overall)
-        "average_ticket_value": 0.0,
-        "average_ticket_display": "$0",
-        "average_ticket_status": "danger",
-        "average_ticket_threshold": 450.0,
-        "invoice_count": 0,
-
-        # Service ticket / billed-only summary (if you show it)
-        "service_invoice_count": 0,
-        "service_revenue": 0.0,
-        "service_avg_ticket": 0.0,
-        "service_avg_ticket_display": "$0",
-        "install_invoice_count": 0,
-        "install_revenue": 0.0,
-
-        # DFO
-        "dfo_pct": 0.0,
-        "dfo_count": 0,
-        "dfo_status_color": "success",
-        "dfo_monthly": [],
-
-        # Employees
-        "employee_cards": [],
-        "gp_per_hour_target": 150.0,
-
-        # Lead turnover (estimates)
-        "estimates_created_ytd": 0,
-        "estimates_won_ytd": 0,
-        "estimates_lost_ytd": 0,
-        "win_rate_ytd": 0.0,
-        "calls_ytd": 0,
-        "estimate_to_call_ratio": 0.0,
-        "lead_turnover_by_month": [],
-        "lead_turnover_by_rep": [],
-        "lead_turnover_by_lead_source": [],
-
-        # Estimates misc
-        "estimates_ytd_count": 0,
-        "estimate_options_status_breakdown": [],
-
-        # Meta
-        "last_refresh": "",
-        "can_refresh": True,
-        "next_refresh": "Now",
-
-        # Diagnostics
-        "kpi_error": "",
-        "kpi_warnings": [],
-    }
-
 
 
 # -----------------------------
@@ -456,10 +408,8 @@ def _largest_remainder_int_percentages(values: list[float]) -> list[int]:
 # KPI builder
 # -----------------------------
 def get_dashboard_kpis():
-    conn = duckdb.connect(DB_FILE)
+    conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        ensure_tables(conn)
-
         # Load all relevant tables
         df_jobs = _safe_df(conn, "SELECT * FROM jobs")
         df_job_emps = _safe_df(conn, "SELECT * FROM job_employees")
@@ -1207,6 +1157,7 @@ def get_dashboard_kpis():
 
                 # Normalize join keys (DuckDB can read IDs as numeric-ish in some frames)
                 ee["employee_id"] = ee["employee_id"].astype(str)
+                # Employee dimension dataframe is df_emp_dim
                 df_emp_dim["employee_id"] = df_emp_dim["employee_id"].astype(str)
 
                 # Prefer the name coming directly from estimate_employees, then fall back to employees/job_employees dimension
@@ -1227,12 +1178,16 @@ def get_dashboard_kpis():
                 )
                 ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[ee["employee_name"] == "", "employee_name_from_est"]
                 ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
-                ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[ee["employee_name"] == "", "employee_id"]
-                ee.loc[ee["employee_name"].isna() | (ee["employee_name"] == ""), "employee_name"] = "Unknown"
+                # If we still have no name, fall back to employee_id only if it is non-empty; otherwise mark Unknown
+                _missing_name = ee["employee_name"].eq("") | ee["employee_name"].isna()
+                _has_emp_id = ee["employee_id"].fillna("").astype(str).str.strip().ne("")
+                ee.loc[_missing_name & _has_emp_id, "employee_name"] = ee.loc[_missing_name & _has_emp_id, "employee_id"]
+                ee.loc[~_has_emp_id & _missing_name, "employee_name"] = "Unknown"
 
                 # Attach per-estimate outcome for rollups
+                # df_est_ytd is one row per estimate and contains the derived `outcome`
                 ee = ee.merge(
-                    est_rollup[["estimate_id", "outcome"]],
+                    df_est_ytd[["estimate_id", "outcome"]],
                     how="left",
                     on="estimate_id",
                 )
@@ -1247,16 +1202,21 @@ def get_dashboard_kpis():
                     .reset_index()
                     .sort_values("estimates", ascending=False)
                 )
-            emp_breakdown = [
-                        {
-                            "employee": str(r["employee_name"]) or "Unknown",
-                            "estimates": int(r["estimates"]),
-                            "won": int(r["won"]),
-                            "lost": int(r["lost"]),
-                            "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
-                        }
-                        for _, r in eb.iterrows()
-                    ]
+                emp_breakdown = [
+                    {
+                        "employee": str(r["employee_name"]) or "Unknown",
+                        "estimates": int(r["estimates"]),
+                        "won": int(r["won"]),
+                        "lost": int(r["lost"]),
+                        "win_rate": round(
+                            (int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0),
+                            1,
+                        )
+                        if (int(r["won"]) + int(r["lost"])) > 0
+                        else 0.0,
+                    }
+                    for _, r in eb.iterrows()
+                ]
 
             lead_turnover["employee_breakdown"] = emp_breakdown
 
@@ -1265,7 +1225,7 @@ def get_dashboard_kpis():
         # -----------------------------------
         refresh_status = get_refresh_status()
 
-        computed = {
+        return {
             # FTC / Repeat visits
             "first_time_completion_pct": first_time_completion_pct,
             "first_time_completion_target": first_time_completion_target,
@@ -1322,27 +1282,13 @@ def get_dashboard_kpis():
             **refresh_status,
         }
 
-        payload = _base_payload()
-        payload.update(computed)
-        return payload
-
-
     finally:
         conn.close()
 
 
-
-def get_dashboard_kpis_safe():
-    """Run KPIs and surface real errors (do not silently default everything to 0).
-
-    This keeps the app from 'looking fine' while actually reading an empty / wrong DB.
-    """
-    return get_dashboard_kpis()
 def get_refresh_status():
-    conn = duckdb.connect(DB_FILE)
+    conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        ensure_tables(conn)
-
         row = conn.execute("""
             SELECT value FROM metadata WHERE key = 'last_refresh'
         """).fetchone()
