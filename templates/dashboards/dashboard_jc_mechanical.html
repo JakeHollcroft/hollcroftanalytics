@@ -22,6 +22,26 @@
 
 <body class="jc-dash">
 
+{# ---- Safe defaults (prevents template crash if KPI dict is missing keys) ---- #}
+{% set first_time_completion_pct = first_time_completion_pct|default(0) %}
+{% set first_time_completion_target = first_time_completion_target|default(85) %}
+{% set first_time_completed = first_time_completed|default(0) %}
+{% set repeat_visit_completed = repeat_visit_completed|default(0) %}
+{% set repeat_visit_pct = repeat_visit_pct|default(0) %}
+{% set completed_jobs = completed_jobs|default(0) %}
+
+{% set dfo_pct = dfo_pct|default(0) %}
+{% set dfo_count = dfo_count|default(0) %}
+{% set dfo_status_color = dfo_status_color|default('success') %}
+{% set dfo_monthly = dfo_monthly|default([]) %}
+
+{% set total_revenue_ytd_display = total_revenue_ytd_display|default('$0') %}
+{% set revenue_breakdown_ytd = revenue_breakdown_ytd|default([]) %}
+{% set employee_cards = employee_cards|default([]) %}
+
+{% set lead_turnover = lead_turnover|default({}) %}
+
+
 <!-- NAVBAR -->
 <header class="navbar">
     <div class="brand">
