@@ -83,7 +83,7 @@
         </div>
         
         <div class="jc-kpi-footer">
-            <span class="jc-kpi-note">Includes: paid, open, pending_payment</span>
+            <span class="jc-kpi-note">Billed invoices only (open + pending_payment)</span>
         </div>
     </article>
 
@@ -189,11 +189,43 @@
                 </svg>
             </div>
             <div class="jc-kpi-meta">
-                <div class="jc-kpi-label">Average Ticket Value (YTD)</div>
+                <div class="jc-kpi-label">Average Ticket (YTD)</div>
                 <div class="jc-kpi-badge">Revenue KPI</div>
             </div>
         </div>
-        
+
+        {# Split Service vs Install if available; fallback to legacy average_ticket_display #}
+        {% if service_avg_ticket_display is defined or install_avg_ticket_display is defined %}
+        <div class="jc-atv-split">
+            <div class="jc-atv-split-box">
+                <div class="jc-atv-split-label">Service</div>
+                <div class="jc-atv-split-value jc-status-{{ service_avg_ticket_status|default('warning') }}">
+                    {{ service_avg_ticket_display|default('$0') }}
+                </div>
+                {% if service_invoice_count is defined %}
+                <div class="jc-atv-split-sub">{{ service_invoice_count }} invoices</div>
+                {% else %}
+                <div class="jc-atv-split-sub">Target: $450 / invoice</div>
+                {% endif %}
+            </div>
+
+            <div class="jc-atv-split-box">
+                <div class="jc-atv-split-label">Install</div>
+                <div class="jc-atv-split-value jc-status-{{ install_avg_ticket_status|default('warning') }}">
+                    {{ install_avg_ticket_display|default('$0') }}
+                </div>
+                {% if install_invoice_count is defined %}
+                <div class="jc-atv-split-sub">{{ install_invoice_count }} invoices</div>
+                {% else %}
+                <div class="jc-atv-split-sub">Target: $450 / invoice</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="jc-kpi-footer">
+            <span class="jc-kpi-note">Billed invoices only (open + pending_payment)</span>
+        </div>
+        {% else %}
         <div class="jc-atv-main">
             <div class="jc-atv-value-section">
                 <span class="jc-atv-value jc-status-{{ average_ticket_status|default('warning') }}">
@@ -201,7 +233,7 @@
                 </span>
                 <span class="jc-atv-count">{{ invoice_count }} invoices</span>
             </div>
-            
+
             <div class="jc-atv-threshold">
                 <span class="jc-threshold-label">Minimum Target:</span>
                 <span class="jc-threshold-value" style="color: #28a745;">$450</span>
@@ -212,13 +244,14 @@
                 {% endif %}
             </div>
         </div>
-        
+
         <div class="jc-kpi-footer">
-            <span class="jc-kpi-note">Includes: paid, open, pending_payment invoices</span>
+            <span class="jc-kpi-note">Billed invoices only (open + pending_payment)</span>
         </div>
+        {% endif %}
     </article>
 
-    <!-- FIRST-TIME COMPLETION CARD -->
+<!-- FIRST-TIME COMPLETION CARD -->
 <article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
   <div class="jc-ftc-layout">
     <div class="jc-ftc-left">
@@ -305,7 +338,7 @@
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">
     <h2 class="jc-employee-title">Technician KPI Cards</h2>
-    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket + Callback + Gross Profit/Hr (YTD)</div>
+    <div class="jc-employee-subtitle">Completed Jobs + Avg Ticket + $/Day + Callback + Gross Profit/Hr (YTD)</div>
   </div>
 
   <div class="jc-employee-grid">
@@ -345,7 +378,16 @@
               <div class="jc-employee-kpi-sub">{{ e.overall_invoice_count|default(0) }} invoices</div>
             </div>
 
-            <!-- Callback % (if present) -->
+                        <!-- $ / Day (Service) -->
+            <div class="jc-employee-kpi">
+              <div class="jc-employee-kpi-label">$ / Day (Service)</div>
+              <div class="jc-employee-kpi-value jc-status-{{ e.daily_revenue_status|default('warning') }}">
+                {{ e.daily_revenue_display|default('$0') }}
+              </div>
+              <div class="jc-employee-kpi-sub">Target $1350/day</div>
+            </div>
+
+<!-- Callback % (if present) -->
             <div class="jc-employee-kpi">
               <div class="jc-employee-kpi-label">Callback Rate (YTD)</div>
               <div class="jc-employee-kpi-value jc-status-{{ e.callback_status|default('warning') }}">
