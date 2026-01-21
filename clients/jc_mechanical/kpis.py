@@ -12,6 +12,75 @@ DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 CENTRAL_TZ = ZoneInfo("America/Chicago")
 
 
+def _base_payload() -> dict:
+    """Baseline keys so templates never see UndefinedError."""
+    return {
+        # FTC / Repeat visits
+        "first_time_completion_pct": 0.0,
+        "first_time_completion_target": 85,
+        "first_time_completed": 0,
+        "repeat_visit_completed": 0,
+        "completed_jobs": 0,
+        "repeat_visit_pct": 0.0,
+        "repeat_jobs": [],
+
+        # Revenue
+        "total_revenue_ytd": 0.0,
+        "total_revenue_ytd_display": "$0",
+        "revenue_breakdown_ytd": [],
+
+        # Avg ticket (overall)
+        "average_ticket_value": 0.0,
+        "average_ticket_display": "$0",
+        "average_ticket_status": "danger",
+        "average_ticket_threshold": 450.0,
+        "invoice_count": 0,
+
+        # Service ticket / billed-only summary (if you show it)
+        "service_invoice_count": 0,
+        "service_revenue": 0.0,
+        "service_avg_ticket": 0.0,
+        "service_avg_ticket_display": "$0",
+        "install_invoice_count": 0,
+        "install_revenue": 0.0,
+
+        # DFO
+        "dfo_pct": 0.0,
+        "dfo_count": 0,
+        "dfo_status_color": "success",
+        "dfo_monthly": [],
+
+        # Employees
+        "employee_cards": [],
+        "gp_per_hour_target": 150.0,
+
+        # Lead turnover (estimates)
+        "estimates_created_ytd": 0,
+        "estimates_won_ytd": 0,
+        "estimates_lost_ytd": 0,
+        "win_rate_ytd": 0.0,
+        "calls_ytd": 0,
+        "estimate_to_call_ratio": 0.0,
+        "lead_turnover_by_month": [],
+        "lead_turnover_by_rep": [],
+        "lead_turnover_by_lead_source": [],
+
+        # Estimates misc
+        "estimates_ytd_count": 0,
+        "estimate_options_status_breakdown": [],
+
+        # Meta
+        "last_refresh": "",
+        "can_refresh": True,
+        "next_refresh": "Now",
+
+        # Diagnostics
+        "kpi_error": "",
+        "kpi_warnings": [],
+    }
+
+
+
 # -----------------------------
 # Tables / schema (read-side safety)
 # -----------------------------
@@ -1196,7 +1265,7 @@ def get_dashboard_kpis():
         # -----------------------------------
         refresh_status = get_refresh_status()
 
-        return {
+        computed = {
             # FTC / Repeat visits
             "first_time_completion_pct": first_time_completion_pct,
             "first_time_completion_target": first_time_completion_target,
@@ -1253,8 +1322,28 @@ def get_dashboard_kpis():
             **refresh_status,
         }
 
+        payload = _base_payload()
+        payload.update(computed)
+        return payload
+
+
     finally:
         conn.close()
+
+
+
+def get_dashboard_kpis_safe() -> dict:
+    """Wrapper that guarantees template-safe keys while surfacing errors."""
+    try:
+        out = get_dashboard_kpis()
+        # Ensure all expected keys exist
+        payload = _base_payload()
+        payload.update(out or {})
+        return payload
+    except Exception as e:
+        payload = _base_payload()
+        payload["kpi_error"] = f"{type(e).__name__}: {e}"
+        return payload
 
 
 def get_refresh_status():

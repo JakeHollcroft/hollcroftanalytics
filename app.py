@@ -308,22 +308,9 @@ def dashboard():
     data = {}
 
     if current_user.dashboard_key == "jc_mechanical":
-        from clients.jc_mechanical.kpis import get_dashboard_kpis
+        from clients.jc_mechanical.kpis import get_dashboard_kpis_safe
         try:
-            data = get_dashboard_kpis()
-
-# ---- KPI safety defaults (prevents Jinja crashes) ----
-            data.setdefault("dfo_pct", 0.0)
-            data.setdefault("dfo_count", 0)
-            data.setdefault("dfo_status_color", "success")
-            data.setdefault("dfo_monthly", [])
-
-            data.setdefault("first_time_completion_pct", 0.0)
-            data.setdefault("first_time_completion_target", 85)
-
-            data.setdefault("average_ticket_value", 0.0)
-            data.setdefault("invoice_count", 0)
-
+            data = get_dashboard_kpis_safe()
         except Exception as e:
             data = {
                 "kpi_error": f"KPI refresh error: {type(e).__name__}: {e}"
