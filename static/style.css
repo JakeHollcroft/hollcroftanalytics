@@ -2434,3 +2434,175 @@ footer {
 .jc-status-warning { color: #ffc107; }
 .jc-status-danger  { color: #dc3545; }
 
+/* =========================
+   Lead Turnover KPI (YTD)
+   ========================= */
+.jc-kpi-lead .jc-kpi-header {
+  margin-bottom: 14px;
+}
+
+.jc-lead-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.jc-lead-metric {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 12px 12px;
+  backdrop-filter: blur(10px);
+}
+
+.jc-lead-label {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.70);
+  margin-bottom: 6px;
+}
+
+.jc-lead-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.jc-lead-won {
+  color: rgba(46, 204, 113, 0.95);
+}
+
+.jc-lead-lost {
+  color: rgba(231, 76, 60, 0.95);
+}
+
+.jc-lead-rate {
+  color: rgba(52, 152, 219, 0.95);
+}
+
+.jc-lead-secondary {
+  margin-top: 12px;
+  padding: 12px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 200, 0.08),
+    rgba(0, 140, 255, 0.06)
+  );
+}
+
+.jc-lead-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.jc-lead-secondary-title {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.jc-lead-secondary-sub {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.jc-lead-secondary-value {
+  font-size: 1.2rem;
+  font-weight: 900;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.jc-lead-details {
+  margin-top: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.jc-lead-details summary {
+  cursor: pointer;
+  padding: 12px 12px;
+  font-weight: 800;
+  list-style: none;
+  user-select: none;
+}
+
+.jc-lead-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.jc-lead-details summary:after {
+  content: "▾";
+  float: right;
+  opacity: 0.75;
+  transform: translateY(-1px);
+}
+
+.jc-lead-details[open] summary:after {
+  content: "▴";
+}
+
+.jc-lead-breakdowns {
+  padding: 0 12px 12px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.jc-lead-panel {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 10px;
+}
+
+.jc-lead-panel-title {
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.jc-lead-table-wrap {
+  overflow: auto;
+  border-radius: 12px;
+}
+
+.jc-lead-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.jc-lead-table thead th {
+  text-align: left;
+  padding: 10px 10px;
+  color: rgba(255, 255, 255, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  position: sticky;
+  top: 0;
+}
+
+.jc-lead-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+}
+
+.jc-lead-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.jc-lead-empty {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.60);
+  padding: 14px 10px;
+}

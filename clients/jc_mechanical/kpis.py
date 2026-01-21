@@ -906,7 +906,7 @@ def get_dashboard_kpis():
                 "gross_profit_per_hour_ytd": gp_hr,
                 "gross_profit_per_hour_ytd_display": "Pending",
                 "gp_per_hour_target": gp_per_hour_target,
-            "gp_per_hour_pending": gp_per_hour_pending,
+                "gp_per_hour_pending": gp_per_hour_pending,
                 "gp_per_hour_status": gp_status,
             })
 
@@ -966,7 +966,205 @@ def get_dashboard_kpis():
                 for _, row in b.iterrows()
             ]
 
+        
         # -----------------------------------
+        # Lead Turnover KPIs (YTD)
+        # - Estimates created
+        # - Won vs Lost (derived from estimate_options approval_status/status rolled up per estimate)
+        # - Win rate
+        # - Estimate to Call ratio (calls proxied by completed jobs YTD, until a true calls table exists)
+        # - Optional breakdowns: by month, by employee, by lead source
+        # -----------------------------------
+        lead_turnover = {
+            "estimates_created_ytd": 0,
+            "estimates_won_ytd": 0,
+            "estimates_lost_ytd": 0,
+            "estimates_pending_ytd": 0,
+            "win_rate_ytd": 0.0,
+            "calls_ytd": int(completed_jobs),  # proxy
+            "estimate_to_call_ratio": 0.0,
+            "month_breakdown": [],
+            "employee_breakdown": [],
+            "lead_source_breakdown": [],
+        }
+
+        def _norm_str(x) -> str:
+            if x is None or (isinstance(x, float) and pd.isna(x)):
+                return ""
+            return str(x).strip().lower()
+
+        def _bucket_option_status(approval_status_val, status_val) -> str:
+            a = _norm_str(approval_status_val)
+            s = _norm_str(status_val)
+
+            won_keys = {"approved", "accepted", "won", "sold", "selected"}
+            lost_keys = {"declined", "rejected", "lost", "canceled", "cancelled", "voided"}
+
+            # Approval status is usually the best signal
+            if a in won_keys:
+                return "won"
+            if a in lost_keys:
+                return "lost"
+
+            # Fall back to status field
+            if s in won_keys:
+                return "won"
+            if s in lost_keys:
+                return "lost"
+
+            return "pending"
+
+        # Filter estimates to YTD
+        df_est_ytd = pd.DataFrame()
+        if not df_estimates.empty:
+            df_estimates = _ensure_columns(df_estimates, {
+                "estimate_id": "object",
+                "created_at": "object",
+                "lead_source": "object",
+            })
+            df_estimates["created_at_dt"] = _to_dt_utc(df_estimates["created_at"])
+            df_est_ytd = df_estimates[df_estimates["created_at_dt"] >= start_of_year_utc].copy()
+
+        if not df_est_ytd.empty:
+            lead_turnover["estimates_created_ytd"] = int(df_est_ytd["estimate_id"].nunique())
+
+            # Roll up options to an estimate outcome
+            if not df_estimate_options.empty:
+                df_estimate_options = _ensure_columns(df_estimate_options, {
+                    "estimate_id": "object",
+                    "status": "object",
+                    "approval_status": "object",
+                })
+
+                opt = df_estimate_options.copy()
+                opt = opt[opt["estimate_id"].isin(df_est_ytd["estimate_id"])].copy()
+                if not opt.empty:
+                    opt["bucket"] = opt.apply(
+                        lambda r: _bucket_option_status(r.get("approval_status"), r.get("status")),
+                        axis=1
+                    )
+
+                    # outcome per estimate: won > lost > pending
+                    def _rollup_bucket(series: pd.Series) -> str:
+                        s = set(series.dropna().astype(str))
+                        if "won" in s:
+                            return "won"
+                        if "lost" in s:
+                            return "lost"
+                        return "pending"
+
+                    est_outcome = (
+                        opt.groupby("estimate_id")["bucket"]
+                        .apply(_rollup_bucket)
+                        .reset_index()
+                        .rename(columns={"bucket": "outcome"})
+                    )
+
+                    df_est_ytd = df_est_ytd.merge(est_outcome, how="left", on="estimate_id")
+                else:
+                    df_est_ytd["outcome"] = "pending"
+            else:
+                df_est_ytd["outcome"] = "pending"
+
+            df_est_ytd["outcome"] = df_est_ytd["outcome"].fillna("pending")
+
+            lead_turnover["estimates_won_ytd"] = int((df_est_ytd["outcome"] == "won").sum())
+            lead_turnover["estimates_lost_ytd"] = int((df_est_ytd["outcome"] == "lost").sum())
+            lead_turnover["estimates_pending_ytd"] = int((df_est_ytd["outcome"] == "pending").sum())
+
+            denom = lead_turnover["estimates_won_ytd"] + lead_turnover["estimates_lost_ytd"]
+            lead_turnover["win_rate_ytd"] = round((lead_turnover["estimates_won_ytd"] / denom) * 100.0, 1) if denom > 0 else 0.0
+
+            calls = int(lead_turnover["calls_ytd"])
+            est_created = int(lead_turnover["estimates_created_ytd"])
+            lead_turnover["estimate_to_call_ratio"] = round((est_created / calls) * 100.0, 1) if calls > 0 else 0.0
+
+            # Month breakdown
+            df_est_ytd["month"] = df_est_ytd["created_at_dt"].dt.to_period("M").astype(str)
+            mb = (
+                df_est_ytd.groupby("month")
+                .agg(
+                    estimates=("estimate_id", "nunique"),
+                    won=("outcome", lambda s: int((s == "won").sum())),
+                    lost=("outcome", lambda s: int((s == "lost").sum())),
+                )
+                .reset_index()
+                .sort_values("month")
+            )
+            lead_turnover["month_breakdown"] = [
+                {
+                    "month": str(r["month"]),
+                    "estimates": int(r["estimates"]),
+                    "won": int(r["won"]),
+                    "lost": int(r["lost"]),
+                    "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                }
+                for _, r in mb.iterrows()
+            ]
+
+            # Lead source breakdown
+            df_est_ytd["lead_source_norm"] = df_est_ytd.get("lead_source", "").fillna("Unknown").astype(str).str.strip()
+            lsb = (
+                df_est_ytd.groupby("lead_source_norm")
+                .agg(
+                    estimates=("estimate_id", "nunique"),
+                    won=("outcome", lambda s: int((s == "won").sum())),
+                    lost=("outcome", lambda s: int((s == "lost").sum())),
+                )
+                .reset_index()
+                .sort_values("estimates", ascending=False)
+            )
+            lead_turnover["lead_source_breakdown"] = [
+                {
+                    "lead_source": str(r["lead_source_norm"]) or "Unknown",
+                    "estimates": int(r["estimates"]),
+                    "won": int(r["won"]),
+                    "lost": int(r["lost"]),
+                    "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                }
+                for _, r in lsb.iterrows()
+            ]
+
+            # Employee breakdown (best-effort via estimate_employees -> employee_id)
+            emp_breakdown = []
+            if not df_estimate_emps.empty:
+                ee = df_estimate_emps.copy()
+                ee = _ensure_columns(ee, {"estimate_id": "object", "employee_id": "object"})
+                ee = ee[ee["estimate_id"].isin(df_est_ytd["estimate_id"])].copy()
+                if not ee.empty:
+                    ee = ee.merge(df_est_ytd[["estimate_id", "outcome"]], how="left", on="estimate_id")
+
+                    # join employee names if available
+                    emp_dim = df_emp_dim[["employee_id", "employee_name"]].drop_duplicates() if "employee_name" in df_emp_dim.columns else pd.DataFrame()
+                    if not emp_dim.empty:
+                        ee = ee.merge(emp_dim, how="left", on="employee_id")
+                    else:
+                        ee["employee_name"] = ee.get("employee_id", "Unknown")
+
+                    eb = (
+                        ee.groupby("employee_name")
+                        .agg(
+                            estimates=("estimate_id", "nunique"),
+                            won=("outcome", lambda s: int((s == "won").sum())),
+                            lost=("outcome", lambda s: int((s == "lost").sum())),
+                        )
+                        .reset_index()
+                        .sort_values("estimates", ascending=False)
+                    )
+                    emp_breakdown = [
+                        {
+                            "employee": str(r["employee_name"]) or "Unknown",
+                            "estimates": int(r["estimates"]),
+                            "won": int(r["won"]),
+                            "lost": int(r["lost"]),
+                            "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                        }
+                        for _, r in eb.iterrows()
+                    ]
+
+            lead_turnover["employee_breakdown"] = emp_breakdown
+
+# -----------------------------------
         # Refresh status + last_refresh formatting
         # -----------------------------------
         refresh_status = get_refresh_status()
@@ -1019,6 +1217,9 @@ def get_dashboard_kpis():
 
             # Estimates
             **estimates_kpis,
+
+            # Lead Turnover
+            **lead_turnover,
 
             # Meta
             "last_refresh": refresh_status.get("last_refresh_display", ""),
