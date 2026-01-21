@@ -1157,7 +1157,7 @@ def get_dashboard_kpis():
 
                 # Normalize join keys (DuckDB can read IDs as numeric-ish in some frames)
                 ee["employee_id"] = ee["employee_id"].astype(str)
-                emp_dim["employee_id"] = emp_dim["employee_id"].astype(str)
+                df_emp_dim["employee_id"] = df_emp_dim["employee_id"].astype(str)
 
                 # Prefer the name coming directly from estimate_employees, then fall back to employees/job_employees dimension
                 ee["employee_name_from_est"] = (
@@ -1167,7 +1167,7 @@ def get_dashboard_kpis():
                 ).str.strip()
 
                 ee = ee.merge(
-                    emp_dim[["employee_id", "employee_name"]],
+                    df_emp_dim[["employee_id", "employee_name"]],
                     how="left",
                     on="employee_id",
                 )
