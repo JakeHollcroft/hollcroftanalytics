@@ -313,12 +313,7 @@ def dashboard():
 
     if current_user.dashboard_key == "jc_mechanical":
         from clients.jc_mechanical.kpis import get_dashboard_kpis_safe
-        try:
-            data = get_dashboard_kpis_safe()
-        except Exception as e:
-            data = {
-                "kpi_error": f"KPI refresh error: {type(e).__name__}: {e}"
-            }
+        data = get_dashboard_kpis_safe()
 
 
     all_users = []
