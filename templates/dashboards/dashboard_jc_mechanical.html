@@ -22,7 +22,6 @@
 
 <body class="jc-dash">
 
-
 <!-- NAVBAR -->
 <header class="navbar">
     <div class="brand">
@@ -50,6 +49,18 @@
 </div>
 
 <main id="main-content" role="main">
+{% if kpi_error %}
+  <section class="container mt-3">
+    <div class="alert alert-danger" role="alert" style="border-radius:14px;">
+      <div style="font-weight:800; margin-bottom:6px;">Dashboard data error</div>
+      <div style="opacity:0.9;">{{ kpi_error }}</div>
+      <div style="opacity:0.7; margin-top:6px; font-size:0.9rem;">
+        Check Render logs for the full traceback. Fix the KPI function, redeploy, and refresh.
+      </div>
+    </div>
+  </section>
+{% else %}
+
 
 {% set first_time_completion_pct = first_time_completion_pct|default(0) %}
 {% set first_time_completion_target = first_time_completion_target|default(85) %}
@@ -256,7 +267,7 @@
 
 
     <!-- LEAD TURNOVER CARD -->
-    <article class="jc-kpi-card jc-kpi-lead jc-kpi-wide" aria-labelledby="kpi-lead-title">
+    <article class="jc-kpi-card jc-kpi-lead jc-kpi-wide jc-kpi-full" aria-labelledby="kpi-lead-title">
         <div class="jc-kpi-header">
             <div class="jc-kpi-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -277,19 +288,19 @@
         <div class="jc-lead-grid">
             <div class="jc-lead-metric">
                 <div class="jc-lead-label">Estimates created</div>
-                <div class="jc-lead-value">{{ estimates_created_ytd|default(0) }}</div>
+                <div class="jc-lead-value">{{ estimates_created_ytd }}</div>
             </div>
             <div class="jc-lead-metric">
                 <div class="jc-lead-label">Won</div>
-                <div class="jc-lead-value jc-lead-won">{{ estimates_won_ytd|default(0) }}</div>
+                <div class="jc-lead-value jc-lead-won">{{ estimates_won_ytd }}</div>
             </div>
             <div class="jc-lead-metric">
                 <div class="jc-lead-label">Lost</div>
-                <div class="jc-lead-value jc-lead-lost">{{ estimates_lost_ytd|default(0) }}</div>
+                <div class="jc-lead-value jc-lead-lost">{{ estimates_lost_ytd }}</div>
             </div>
             <div class="jc-lead-metric">
                 <div class="jc-lead-label">Win rate</div>
-                <div class="jc-lead-value jc-lead-rate">{{ win_rate_ytd|default(0) }}%</div>
+                <div class="jc-lead-value jc-lead-rate">{{ win_rate_ytd }}%</div>
             </div>
         </div>
 
@@ -297,10 +308,10 @@
             <div class="jc-lead-secondary-row">
                 <div class="jc-lead-secondary-left">
                     <div class="jc-lead-secondary-title">Estimate to Call Ratio</div>
-                    <div class="jc-lead-secondary-sub">Calls: {{ calls_ytd|default(0) }} · Estimates: {{ estimates_created_ytd|default(0) }}</div>
+                    <div class="jc-lead-secondary-sub">Calls: {{ calls_ytd }} · Estimates: {{ estimates_created_ytd }}</div>
                 </div>
                 <div class="jc-lead-secondary-right">
-                    <div class="jc-lead-secondary-value">{{ estimate_to_call_ratio|default(0) }}%</div>
+                    <div class="jc-lead-secondary-value">{{ estimate_to_call_ratio }}%</div>
                 </div>
             </div>
         </div>
@@ -324,7 +335,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for r in month_breakdown|default([]) %}
+                                {% for r in month_breakdown %}
                                 <tr>
                                     <td>{{ r.month }}</td>
                                     <td>{{ r.estimates }}</td>
@@ -333,7 +344,7 @@
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
-                                {% if (month_breakdown|default([]))|length == 0 %}
+                                {% if (month_breakdown)|length == 0 %}
                                 <tr><td colspan="5" class="jc-lead-empty">No YTD estimate history yet</td></tr>
                                 {% endif %}
                             </tbody>
@@ -355,16 +366,16 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for r in employee_breakdown|default([]) %}
+                                {% for r in employee_breakdown %}
                                 <tr>
-                                    <td>{{ r.employee_name }}</td>
+                                    <td>{{ r.employee_name') }}</td>
                                     <td>{{ r.estimates }}</td>
                                     <td>{{ r.won }}</td>
                                     <td>{{ r.lost }}</td>
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
-                                {% if (employee_breakdown|default([]))|length == 0 %}
+                                {% if (employee_breakdown)|length == 0 %}
                                 <tr><td colspan="5" class="jc-lead-empty">No estimate assignments yet</td></tr>
                                 {% endif %}
                             </tbody>
@@ -386,7 +397,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for r in lead_source_breakdown|default([]) %}
+                                {% for r in lead_source_breakdown %}
                                 <tr>
                                     <td>{{ r.lead_source }}</td>
                                     <td>{{ r.estimates }}</td>
@@ -395,7 +406,7 @@
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
-                                {% if (lead_source_breakdown|default([]))|length == 0 %}
+                                {% if (lead_source_breakdown)|length == 0 %}
                                 <tr><td colspan="5" class="jc-lead-empty">No lead source data yet</td></tr>
                                 {% endif %}
                             </tbody>
@@ -828,6 +839,8 @@
     <span>Last refreshed: {{ last_refresh }}</span>
 </div>
 
+
+{% endif %}
 </main>
 
 <footer>
