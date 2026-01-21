@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import duckdb
 import pandas as pd
 
-PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
+PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "/var/data"))
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")

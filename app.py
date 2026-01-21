@@ -14,6 +14,10 @@ from jinja2 import TemplateNotFound
 import sqlite3
 from pathlib import Path
 import os
+
+# Ensure Render disk path is used even if env var isn't set for the web service
+os.environ.setdefault("PERSIST_DIR", "/var/data")
+
 import threading
 import time
 import requests
