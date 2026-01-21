@@ -1,5 +1,4 @@
 import os
-import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -9,23 +8,6 @@ import pandas as pd
 
 PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
-
-
-def _duckdb_connect_readonly(db_file: Path, attempts: int = 6, base_sleep_s: float = 0.25) -> duckdb.DuckDBPyConnection:
-    last_err: Exception | None = None
-    for i in range(attempts):
-        try:
-            return duckdb.connect(str(db_file), read_only=True)
-        except Exception as e:  # pragma: no cover
-            last_err = e
-            msg = str(e)
-            # DuckDB write transactions (your ingest) can briefly hold an exclusive lock.
-            if "Could not set lock on file" in msg or "Conflicting lock" in msg:
-                time.sleep(base_sleep_s * (2 ** i))
-                continue
-            raise
-    assert last_err is not None
-    raise last_err
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
 
@@ -374,9 +356,10 @@ def _largest_remainder_int_percentages(values: list[float]) -> list[int]:
 # KPI builder
 # -----------------------------
 def get_dashboard_kpis():
-    conn = _duckdb_connect_readonly(DB_FILE)
+    conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        ensure_tables(conn)
+        # NOTE: do NOT run ensure_tables() in read-only dashboard mode (it issues CREATE TABLE).
+        # Schema should be created by ingestion (write-mode) before dashboards are viewed.
 
         # Load all relevant tables
         df_jobs = _safe_df(conn, "SELECT * FROM jobs")
@@ -1136,9 +1119,9 @@ def get_dashboard_kpis():
 
 
 def get_refresh_status():
-    conn = duckdb.connect(DB_FILE)
+    conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        ensure_tables(conn)
+        # metadata table should already exist; if not, we treat as "no data yet"
 
         row = conn.execute("""
             SELECT value FROM metadata WHERE key = 'last_refresh'
