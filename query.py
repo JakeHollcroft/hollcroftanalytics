@@ -16,261 +16,239 @@ def hr(title):
 # --------------------------------------------------------------------------------------
 # 0) TABLE INVENTORY
 # --------------------------------------------------------------------------------------
-hr("0) TABLE INVENTORY")
+# --------------------------------------------------------------------------------------
+# 8) ESTIMATES + OPTIONS AUDIT (Lead Turnover KPI validation)
+# --------------------------------------------------------------------------------------
+hr("8) ESTIMATES AUDIT: YTD counts + coverage")
 print(conn.execute("""
-SELECT table_name
-FROM information_schema.tables
-WHERE table_schema = 'main'
-ORDER BY table_name
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 1) QUICK SANITY: money fields look like CENTS?
-# --------------------------------------------------------------------------------------
-hr("1) QUICK SANITY: money fields look like CENTS?")
-print(conn.execute("""
-SELECT
-  (SELECT MAX(amount) FROM invoices) AS max_invoice_amount_raw,
-  (SELECT MAX(amount) FROM invoice_items) AS max_item_amount_raw,
-  (SELECT MAX(unit_cost) FROM invoice_items) AS max_item_unit_cost_raw
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 2) INVOICE STATUS DISTRIBUTION (very important for "billed only")
-# --------------------------------------------------------------------------------------
-hr("2) INVOICE STATUS DISTRIBUTION")
-print(conn.execute("""
-SELECT LOWER(TRIM(status)) AS status_norm, COUNT(*) AS n, SUM(amount)/100.0 AS sum_amount_dollars
-FROM invoices
-GROUP BY 1
-ORDER BY n DESC
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 3) BILLED-ONLY INVOICES (YTD) - the exact population your KPIs are using
-#    billed-only means: status IN ('open','pending_payment') and invoice_date >= Jan 1
-# --------------------------------------------------------------------------------------
-hr("3) BILLED-ONLY INVOICES (YTD) POPULATION")
-print(conn.execute("""
-WITH billed AS (
+WITH est AS (
   SELECT
-    invoice_id,
-    job_id,
-    LOWER(TRIM(status)) AS status_norm,
-    invoice_number,
-    invoice_date,
-    service_date,
-    paid_at,
-    amount/100.0 AS amount_dollars
-  FROM invoices
-  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
-    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
+    estimate_id,
+    estimate_number,
+    TRY_CAST(created_at AS TIMESTAMP) AS created_dt,
+    lead_source,
+    customer_id
+  FROM estimates
+),
+ytd AS (
+  SELECT *
+  FROM est
+  WHERE created_dt >= date_trunc('year', now())
 )
 SELECT
-  COUNT(*) AS billed_invoice_count,
-  SUM(amount_dollars) AS billed_invoice_sum_dollars,
-  SUM(CASE WHEN job_id IS NULL OR TRIM(job_id)='' THEN 1 ELSE 0 END) AS billed_missing_job_id,
-  SUM(CASE WHEN invoice_date IS NULL OR TRIM(invoice_date)='' THEN 1 ELSE 0 END) AS billed_missing_invoice_date,
-  SUM(CASE WHEN service_date IS NULL OR TRIM(service_date)='' THEN 1 ELSE 0 END) AS billed_missing_service_date
-FROM billed
+  COUNT(*) AS estimates_ytd,
+  SUM(CASE WHEN estimate_id IS NULL OR TRIM(estimate_id)='' THEN 1 ELSE 0 END) AS missing_estimate_id,
+  SUM(CASE WHEN created_dt IS NULL THEN 1 ELSE 0 END) AS missing_created_at,
+  SUM(CASE WHEN lead_source IS NULL OR TRIM(lead_source)='' THEN 1 ELSE 0 END) AS missing_lead_source
+FROM ytd
 """).df())
 
-hr("3a) SAMPLE BILLED-ONLY INVOICES (YTD) - check job_id + dates")
+hr("8a) ESTIMATE_OPTIONS status distribution (ALL TIME)")
 print(conn.execute("""
 SELECT
-  invoice_id, invoice_number, job_id, LOWER(TRIM(status)) AS status_norm,
-  invoice_date, service_date, paid_at,
-  amount/100.0 AS amount_dollars
-FROM invoices
-WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
-  AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-ORDER BY TRY_CAST(invoice_date AS TIMESTAMP) DESC
-LIMIT 50
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 4) JOIN COVERAGE: billed invoices -> jobs -> job_employees
-#    This will explain why tech cards show 0 invoices if the join is failing.
-# --------------------------------------------------------------------------------------
-hr("4) JOIN COVERAGE: billed invoices -> jobs -> job_employees")
-print(conn.execute("""
-WITH billed AS (
-  SELECT invoice_id, job_id, amount/100.0 AS amount_dollars
-  FROM invoices
-  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
-    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-),
-billed_jobs AS (
-  SELECT b.*, j.tags
-  FROM billed b
-  LEFT JOIN jobs j ON j.job_id = b.job_id
-),
-billed_jobs_emps AS (
-  SELECT bj.*, je.employee_id
-  FROM billed_jobs bj
-  LEFT JOIN job_employees je ON je.job_id = bj.job_id
-)
-SELECT
-  COUNT(*) AS billed_invoices,
-  SUM(CASE WHEN tags IS NULL THEN 1 ELSE 0 END) AS billed_missing_job_row,
-  SUM(CASE WHEN employee_id IS NULL THEN 1 ELSE 0 END) AS billed_missing_employee_assignment,
-  COUNT(DISTINCT job_id) AS distinct_jobs_in_billed,
-  COUNT(DISTINCT employee_id) AS distinct_employees_touched
-FROM billed_jobs_emps
-""").df())
-
-hr("4a) SAMPLE ROWS where billed invoices have NO matching job row (job_id not found in jobs)")
-print(conn.execute("""
-WITH billed AS (
-  SELECT invoice_id, job_id, invoice_number, invoice_date, amount/100.0 AS amount_dollars
-  FROM invoices
-  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
-    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-)
-SELECT b.*
-FROM billed b
-LEFT JOIN jobs j ON j.job_id = b.job_id
-WHERE j.job_id IS NULL
-LIMIT 50
-""").df())
-
-hr("4b) SAMPLE ROWS where billed invoices DO match jobs but have NO assigned employees")
-print(conn.execute("""
-WITH billed AS (
-  SELECT invoice_id, job_id, invoice_number, invoice_date, amount/100.0 AS amount_dollars
-  FROM invoices
-  WHERE LOWER(TRIM(status)) IN ('open','pending_payment')
-    AND TRY_CAST(invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-),
-bj AS (
-  SELECT b.*, j.tags
-  FROM billed b
-  JOIN jobs j ON j.job_id = b.job_id
-)
-SELECT bj.*
-FROM bj
-LEFT JOIN job_employees je ON je.job_id = bj.job_id
-WHERE je.employee_id IS NULL
-LIMIT 50
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 5) TAG AUDIT (what tags actually exist on billed invoice jobs)
-# --------------------------------------------------------------------------------------
-hr("5) TAG AUDIT: distinct tags on billed invoice jobs (raw tags strings)")
-print(conn.execute("""
-WITH billed_jobs AS (
-  SELECT DISTINCT j.tags
-  FROM invoices i
-  JOIN jobs j ON j.job_id = i.job_id
-  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
-    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-)
-SELECT tags
-FROM billed_jobs
-ORDER BY tags
-LIMIT 200
-""").df())
-
-# --------------------------------------------------------------------------------------
-# 6) CLASSIFICATION CHECK: how many billed invoices are being tagged as service vs install
-#    This mirrors the logic in the KPI code (service excludes install/change-out).
-# --------------------------------------------------------------------------------------
-hr("6) CLASSIFICATION CHECK: billed invoices -> service vs install buckets")
-print(conn.execute("""
-WITH billed AS (
-  SELECT i.invoice_id, i.job_id, i.amount/100.0 AS amount_dollars
-  FROM invoices i
-  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
-    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-),
-bj AS (
-  SELECT b.*, LOWER(COALESCE(j.tags,'')) AS tags_norm
-  FROM billed b
-  LEFT JOIN jobs j ON j.job_id = b.job_id
-),
-flags AS (
-  SELECT *,
-    CASE
-      WHEN tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%' THEN 1
-      ELSE 0
-    END AS is_install,
-    CASE
-      WHEN (tags_norm LIKE '%service%' OR tags_norm LIKE '%demand%')
-           AND NOT (tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%')
-      THEN 1 ELSE 0
-    END AS is_service
-  FROM bj
-)
-SELECT
-  SUM(is_service) AS service_invoice_count,
-  SUM(CASE WHEN is_service=1 THEN amount_dollars ELSE 0 END) AS service_revenue,
-  SUM(is_install) AS install_invoice_count,
-  SUM(CASE WHEN is_install=1 THEN amount_dollars ELSE 0 END) AS install_revenue,
-  SUM(CASE WHEN is_service=0 AND is_install=0 THEN 1 ELSE 0 END) AS unclassified_count,
-  SUM(CASE WHEN is_service=0 AND is_install=0 THEN amount_dollars ELSE 0 END) AS unclassified_revenue
-FROM flags
-""").df())
-
-hr("6a) SAMPLE unclassified billed invoices (these cause service=0 invoices like your screenshot)")
-print(conn.execute("""
-WITH billed AS (
-  SELECT i.invoice_id, i.invoice_number, i.job_id, i.amount/100.0 AS amount_dollars
-  FROM invoices i
-  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
-    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-),
-bj AS (
-  SELECT b.*, LOWER(COALESCE(j.tags,'')) AS tags_norm
-  FROM billed b
-  LEFT JOIN jobs j ON j.job_id = b.job_id
-),
-flags AS (
-  SELECT *,
-    CASE
-      WHEN tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%' THEN 1
-      ELSE 0
-    END AS is_install,
-    CASE
-      WHEN (tags_norm LIKE '%service%' OR tags_norm LIKE '%demand%')
-           AND NOT (tags_norm LIKE '%install%' OR tags_norm LIKE '%change out%' OR tags_norm LIKE '%change-out%')
-      THEN 1 ELSE 0
-    END AS is_service
-  FROM bj
-)
-SELECT invoice_id, invoice_number, job_id, amount_dollars, tags_norm
-FROM flags
-WHERE is_service=0 AND is_install=0
+  LOWER(TRIM(COALESCE(approval_status,''))) AS approval_norm,
+  LOWER(TRIM(COALESCE(status,''))) AS status_norm,
+  COUNT(*) AS n
+FROM estimate_options
+GROUP BY 1,2
+ORDER BY n DESC
 LIMIT 100
 """).df())
 
-# --------------------------------------------------------------------------------------
-# 7) TECH ATTRIBUTION CHECK (why tech cards show 0 invoices)
-# --------------------------------------------------------------------------------------
-hr("7) TECH ATTRIBUTION CHECK: billed invoices that actually map to job_employees")
+hr("8b) ESTIMATE_OPTIONS status distribution (YTD estimates only)")
 print(conn.execute("""
-WITH billed AS (
-  SELECT i.invoice_id, i.job_id, TRY_CAST(i.invoice_date AS DATE) AS inv_date,
-         i.amount/100.0 AS amount_dollars
-  FROM invoices i
-  WHERE LOWER(TRIM(i.status)) IN ('open','pending_payment')
-    AND TRY_CAST(i.invoice_date AS TIMESTAMP) >= date_trunc('year', now())
-),
-billed_emp AS (
-  SELECT b.*, je.employee_id
-  FROM billed b
-  JOIN job_employees je ON je.job_id = b.job_id
+WITH ytd_est AS (
+  SELECT estimate_id
+  FROM estimates
+  WHERE TRY_CAST(created_at AS TIMESTAMP) >= date_trunc('year', now())
 )
 SELECT
-  employee_id,
-  COUNT(DISTINCT invoice_id) AS invoices,
-  SUM(amount_dollars) AS revenue,
-  COUNT(DISTINCT inv_date) AS distinct_days_with_invoices
-FROM billed_emp
+  LOWER(TRIM(COALESCE(eo.approval_status,''))) AS approval_norm,
+  LOWER(TRIM(COALESCE(eo.status,''))) AS status_norm,
+  COUNT(*) AS n
+FROM estimate_options eo
+JOIN ytd_est ye USING(estimate_id)
+GROUP BY 1,2
+ORDER BY n DESC
+LIMIT 100
+""").df())
+
+hr("8c) OPTIONS PER ESTIMATE (YTD): do we have multiple options?")
+print(conn.execute("""
+WITH ytd_est AS (
+  SELECT estimate_id
+  FROM estimates
+  WHERE TRY_CAST(created_at AS TIMESTAMP) >= date_trunc('year', now())
+),
+opt AS (
+  SELECT eo.estimate_id, COUNT(*) AS option_cnt
+  FROM estimate_options eo
+  JOIN ytd_est ye USING(estimate_id)
+  GROUP BY 1
+)
+SELECT
+  COUNT(*) AS estimates_with_options,
+  AVG(option_cnt) AS avg_options_per_estimate,
+  MAX(option_cnt) AS max_options_per_estimate,
+  SUM(CASE WHEN option_cnt=1 THEN 1 ELSE 0 END) AS one_option,
+  SUM(CASE WHEN option_cnt=2 THEN 1 ELSE 0 END) AS two_options,
+  SUM(CASE WHEN option_cnt>=3 THEN 1 ELSE 0 END) AS three_plus_options
+FROM opt
+""").df())
+
+hr("8d) ROLLUP RULE TEST (YTD): won/lost/pending per ESTIMATE")
+print(conn.execute("""
+WITH ytd_est AS (
+  SELECT
+    estimate_id,
+    estimate_number,
+    TRY_CAST(created_at AS TIMESTAMP) AS created_dt,
+    COALESCE(NULLIF(TRIM(lead_source),''),'(unknown)') AS lead_source
+  FROM estimates
+  WHERE TRY_CAST(created_at AS TIMESTAMP) >= date_trunc('year', now())
+),
+eo AS (
+  SELECT
+    estimate_id,
+    LOWER(TRIM(COALESCE(approval_status,''))) AS approval_norm,
+    LOWER(TRIM(COALESCE(status,''))) AS status_norm
+  FROM estimate_options
+),
+roll AS (
+  SELECT
+    y.estimate_id,
+    y.estimate_number,
+    y.created_dt,
+    y.lead_source,
+
+    MAX(CASE
+      WHEN approval_norm IN ('approved','accepted','won') THEN 1
+      WHEN status_norm IN ('approved','accepted','won') THEN 1
+      ELSE 0
+    END) AS any_won,
+
+    MAX(CASE
+      WHEN approval_norm IN ('declined','rejected','lost') THEN 1
+      WHEN status_norm IN ('declined','rejected','lost') THEN 1
+      ELSE 0
+    END) AS any_lost,
+
+    COUNT(*) AS option_rows
+  FROM ytd_est y
+  LEFT JOIN eo ON eo.estimate_id = y.estimate_id
+  GROUP BY 1,2,3,4
+),
+bucket AS (
+  SELECT *,
+    CASE
+      WHEN any_won=1 THEN 'won'
+      WHEN any_lost=1 THEN 'lost'
+      ELSE 'pending'
+    END AS outcome
+  FROM roll
+)
+SELECT
+  outcome,
+  COUNT(*) AS estimates,
+  SUM(CASE WHEN option_rows=0 THEN 1 ELSE 0 END) AS estimates_missing_options
+FROM bucket
 GROUP BY 1
-ORDER BY revenue DESC
+ORDER BY estimates DESC
+""").df())
+
+hr("8e) SAMPLE YTD estimates marked PENDING (to see why)")
+print(conn.execute("""
+WITH ytd_est AS (
+  SELECT
+    estimate_id,
+    estimate_number,
+    TRY_CAST(created_at AS TIMESTAMP) AS created_dt,
+    COALESCE(NULLIF(TRIM(lead_source),''),'(unknown)') AS lead_source
+  FROM estimates
+  WHERE TRY_CAST(created_at AS TIMESTAMP) >= date_trunc('year', now())
+),
+eo AS (
+  SELECT
+    estimate_id,
+    LOWER(TRIM(COALESCE(approval_status,''))) AS approval_norm,
+    LOWER(TRIM(COALESCE(status,''))) AS status_norm
+  FROM estimate_options
+),
+roll AS (
+  SELECT
+    y.estimate_id,
+    y.estimate_number,
+    y.created_dt,
+    y.lead_source,
+
+    MAX(CASE
+      WHEN approval_norm IN ('approved','accepted','won') OR status_norm IN ('approved','accepted','won')
+      THEN 1 ELSE 0 END) AS any_won,
+
+    MAX(CASE
+      WHEN approval_norm IN ('declined','rejected','lost') OR status_norm IN ('declined','rejected','lost')
+      THEN 1 ELSE 0 END) AS any_lost
+  FROM ytd_est y
+  LEFT JOIN eo ON eo.estimate_id = y.estimate_id
+  GROUP BY 1,2,3,4
+),
+pending AS (
+  SELECT *
+  FROM roll
+  WHERE any_won=0 AND any_lost=0
+)
+SELECT *
+FROM pending
+ORDER BY created_dt DESC
 LIMIT 50
 """).df())
 
-hr("DONE")
+hr("8f) LEAD SOURCE BREAKDOWN (YTD) using rollup outcome")
+print(conn.execute("""
+WITH ytd_est AS (
+  SELECT
+    estimate_id,
+    COALESCE(NULLIF(TRIM(lead_source),''),'(unknown)') AS lead_source
+  FROM estimates
+  WHERE TRY_CAST(created_at AS TIMESTAMP) >= date_trunc('year', now())
+),
+eo AS (
+  SELECT
+    estimate_id,
+    LOWER(TRIM(COALESCE(approval_status,''))) AS approval_norm,
+    LOWER(TRIM(COALESCE(status,''))) AS status_norm
+  FROM estimate_options
+),
+roll AS (
+  SELECT
+    y.estimate_id,
+    y.lead_source,
+    MAX(CASE WHEN approval_norm IN ('approved','accepted','won') OR status_norm IN ('approved','accepted','won') THEN 1 ELSE 0 END) AS any_won,
+    MAX(CASE WHEN approval_norm IN ('declined','rejected','lost') OR status_norm IN ('declined','rejected','lost') THEN 1 ELSE 0 END) AS any_lost
+  FROM ytd_est y
+  LEFT JOIN eo ON eo.estimate_id = y.estimate_id
+  GROUP BY 1,2
+),
+bucket AS (
+  SELECT *,
+    CASE
+      WHEN any_won=1 THEN 'won'
+      WHEN any_lost=1 THEN 'lost'
+      ELSE 'pending'
+    END AS outcome
+  FROM roll
+)
+SELECT
+  lead_source,
+  SUM(CASE WHEN outcome='won' THEN 1 ELSE 0 END) AS won,
+  SUM(CASE WHEN outcome='lost' THEN 1 ELSE 0 END) AS lost,
+  SUM(CASE WHEN outcome='pending' THEN 1 ELSE 0 END) AS pending,
+  COUNT(*) AS total,
+  ROUND(100.0 * SUM(CASE WHEN outcome='won' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN outcome IN ('won','lost') THEN 1 ELSE 0 END),0), 1) AS win_rate_pct_excl_pending
+FROM bucket
+GROUP BY 1
+ORDER BY total DESC
+LIMIT 50
+""").df())
+
 conn.close()
