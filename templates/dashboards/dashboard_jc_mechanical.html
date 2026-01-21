@@ -368,7 +368,7 @@
                             <tbody>
                                 {% for r in employee_breakdown %}
                                 <tr>
-                                    <td>{{ r.employee_name }}</td>
+                                    <td>{{ r.get('employee_name','') }}</td>
                                     <td>{{ r.estimates }}</td>
                                     <td>{{ r.won }}</td>
                                     <td>{{ r.lost }}</td>
