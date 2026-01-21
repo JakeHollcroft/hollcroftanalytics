@@ -4,9 +4,30 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import duckdb
+
+def safe_exec(conn, sql, params=None):
+    """Execute SQL but ignore failures (useful when running in read-only mode)."""
+    try:
+        if params is None:
+            return conn.execute(sql)
+        return conn.execute(sql, params)
+    except Exception:
+        return None
+
 import pandas as pd
 
-PERSIST_DIR = Path(os.environ.get("PERSIST_DIR", "."))
+# ---- Persistence / DuckDB location ----
+def _resolve_persist_dir() -> Path:
+    env = os.environ.get("PERSIST_DIR")
+    if env:
+        return Path(env)
+    # Render persistent disk commonly mounts at /var/data
+    if Path("/var/data").exists():
+        return Path("/var/data")
+    # Fallback: project root (works for local dev)
+    return Path(__file__).resolve().parents[2]
+
+PERSIST_DIR = _resolve_persist_dir()
 DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
@@ -229,74 +250,105 @@ def _normalize_tags(tags_val) -> str:
 
 
 def _tag_has(tags_norm: str, needle: str) -> bool:
+    """
+    Robust tag matcher.
+
+    Works for:
+      - comma-separated tags (e.g., "commercial, service")
+      - single-phrase tags (e.g., "Commercial Service")
+
+    Rules:
+      - For multi-word needles (phrases), use substring match.
+      - For single-word needles, use a word-boundary style match on common separators.
+    """
     if not tags_norm:
         return False
-    needle = needle.strip().lower()
-    return needle in tags_norm.split(",")
+
+    s = str(tags_norm).strip().lower()
+    n = str(needle).strip().lower()
+    if not n:
+        return False
+
+    # Phrase match
+    if " " in n:
+        return n in s
+
+    # Word-style match across separators
+    import re
+    return re.search(r'(^|[\s,])' + re.escape(n) + r'($|[\s,])', s) is not None
 
 
 def _format_currency(x: float) -> str:
     try:
-        return "${:,.0f}".format(float(x))
+        v = float(x)
+        # Guard against NaN/inf
+        if v != v or v == float("inf") or v == float("-inf"):
+            v = 0.0
+        return "${:,.0f}".format(v)
     except Exception:
         return "$0"
 
 
 def _map_category_from_tags(tags_norm: str) -> str:
     """
-    JC requested revenue categories:
-      - Residential change out
-      - Commercial change out
-      - Residential demand service
-      - Commercial demand service
-      - Residential maintenance
-      - Commercial maintenance
+    Revenue categories requested by JC Mechanical:
+      - Residential Install
+      - Residential Service
+      - Residential Maintenance
+      - Commercial Install
+      - Commercial Service
+      - Commercial Maintenance
+      - New Construction
+
     Everything else -> Other / Unclassified
     """
 
-    is_res = _tag_has(tags_norm, "residential")
-    is_com = _tag_has(tags_norm, "commercial")
+    s = (tags_norm or "").strip().lower()
+
+    is_res = _tag_has(s, "residential") or ("residential" in s)
+    is_com = _tag_has(s, "commercial") or ("commercial" in s)
+
+    is_new_construction = (
+        _tag_has(s, "new construction")
+        or _tag_has(s, "new-construction")
+        or _tag_has(s, "new build")
+        or _tag_has(s, "new-build")
+        or _tag_has(s, "newconstruction")
+    )
 
     is_install = (
-        _tag_has(tags_norm, "install")
-        or _tag_has(tags_norm, "installation")
-        or _tag_has(tags_norm, "change out")
-        or _tag_has(tags_norm, "change-out")
+        _tag_has(s, "install")
+        or _tag_has(s, "installation")
+        or _tag_has(s, "change out")
+        or _tag_has(s, "change-out")
+        or _tag_has(s, "changeout")
     )
-    is_maint = _tag_has(tags_norm, "maintenance")
+
+    is_maint = _tag_has(s, "maintenance")
     is_service = (
-        _tag_has(tags_norm, "service")
-        or _tag_has(tags_norm, "demand service")
-        or _tag_has(tags_norm, "demand")
+        _tag_has(s, "service")
+        or _tag_has(s, "demand service")
+        or _tag_has(s, "demand")
     )
 
-    # extra phrase matching
-    s = tags_norm
-    if "residential install" in s or "residential change out" in s or "residential change-out" in s:
-        is_res, is_install = True, True
-    if "commercial install" in s or "commercial change out" in s or "commercial change-out" in s:
-        is_com, is_install = True, True
-    if "residential maintenance" in s:
-        is_res, is_maint = True, True
-    if "commercial maintenance" in s:
-        is_com, is_maint = True, True
-    if "residential service" in s or "residential demand service" in s:
-        is_res, is_service = True, True
-    if "commercial service" in s or "commercial demand service" in s:
-        is_com, is_service = True, True
+    if is_new_construction:
+        return "New Construction"
 
-    if is_install and is_res:
-        return "Residential change out"
-    if is_install and is_com:
-        return "Commercial change out"
-    if is_maint and is_res:
-        return "Residential maintenance"
-    if is_maint and is_com:
-        return "Commercial maintenance"
-    if is_service and is_res:
-        return "Residential demand service"
-    if is_service and is_com:
-        return "Commercial demand service"
+    if is_res and is_install:
+        return "Residential Install"
+    if is_res and is_maint:
+        return "Residential Maintenance"
+    if is_res and is_service and not is_install:
+        return "Residential Service"
+
+    if is_com and is_install:
+        return "Commercial Install"
+    if is_com and is_maint:
+        return "Commercial Maintenance"
+    if is_com and is_service and not is_install:
+        return "Commercial Service"
+
+    # If tags have install/service/maintenance but no res/com qualifier, keep it unclassified for now
     return "Other / Unclassified"
 
 
@@ -358,9 +410,6 @@ def _largest_remainder_int_percentages(values: list[float]) -> list[int]:
 def get_dashboard_kpis():
     conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        # NOTE: do NOT run ensure_tables() in read-only dashboard mode (it issues CREATE TABLE).
-        # Schema should be created by ingestion (write-mode) before dashboards are viewed.
-
         # Load all relevant tables
         df_jobs = _safe_df(conn, "SELECT * FROM jobs")
         df_job_emps = _safe_df(conn, "SELECT * FROM job_employees")
@@ -568,31 +617,27 @@ def get_dashboard_kpis():
                     "dfo_pct": pct,
                 })
 
+        
         # -----------------------------------
         # Revenue (YTD) + Breakdown (YTD)
+        # IMPORTANT: "Revenue" here is what we BILL for (not what is PAID).
+        # Population = invoices with status IN ('open','pending_payment') and invoice_date in current year.
         # -----------------------------------
-        revenue_statuses = {"paid", "open", "pending_payment"}
-        df_rev = df_invoices[df_invoices["status"].astype(str).str.lower().isin(revenue_statuses)].copy()
+        billed_statuses = {"open", "pending_payment"}
 
-        def _effective_dt(row):
-            st = str(row.get("status") or "").lower()
-            if st == "paid" and pd.notna(row.get("paid_at_dt")):
-                return row.get("paid_at_dt")
-            if pd.notna(row.get("service_date_dt")):
-                return row.get("service_date_dt")
-            if pd.notna(row.get("invoice_date_dt")):
-                return row.get("invoice_date_dt")
-            return pd.NaT
+        df_rev = df_invoices[df_invoices["status"].astype(str).str.lower().isin(billed_statuses)].copy()
 
         if not df_rev.empty:
-            df_rev["effective_dt"] = df_rev.apply(_effective_dt, axis=1)
-            df_rev = df_rev[df_rev["effective_dt"] >= start_of_year_utc].copy()
+            # Use invoice_date as the time anchor for billed revenue
+            df_rev["invoice_date_dt"] = _to_dt_utc(df_rev["invoice_date"]) if "invoice_date" in df_rev.columns else pd.NaT
+            df_rev = df_rev[df_rev["invoice_date_dt"] >= start_of_year_utc].copy()
         else:
-            df_rev["effective_dt"] = pd.NaT
+            df_rev["invoice_date_dt"] = pd.NaT
 
         # Join tags onto revenue for category breakdown
         if not df_rev.empty and not df_jobs.empty:
             df_rev = df_rev.merge(df_jobs[["job_id", "tags_norm"]], how="left", on="job_id")
+
         df_rev["tags_norm"] = df_rev.get("tags_norm", "").fillna("")
         df_rev["category"] = df_rev["tags_norm"].apply(_map_category_from_tags)
 
@@ -635,14 +680,36 @@ def get_dashboard_kpis():
                 })
 
         # -----------------------------------
-        # KPI: Average Ticket (overall) YTD
-        # Definition: total revenue YTD / invoice count YTD (statuses above)
+        # KPI: Average Ticket (overall) YTD (BILLED ONLY)
+        # Definition: total billed revenue YTD / billed invoice count YTD
+        # -----------------------------------
         # -----------------------------------
         invoice_count = int(len(df_rev)) if not df_rev.empty else 0
         average_ticket_value = (total_revenue_ytd / invoice_count) if invoice_count > 0 else 0.0
         average_ticket_threshold = 450.0
         average_ticket_status = "success" if average_ticket_value >= average_ticket_threshold else "danger"
         average_ticket_display = _format_currency(average_ticket_value)
+
+        # Split Average Ticket (Service vs Install) - billed invoices only
+        # Service = categories Residential Service + Commercial Service
+        # Install = categories Residential Install + Commercial Install (+ New Construction counted as install bucket)
+        df_rev_service = df_rev[df_rev["category"].isin(["Residential Service", "Commercial Service"])].copy() if not df_rev.empty else pd.DataFrame()
+        df_rev_install = df_rev[df_rev["category"].isin(["Residential Install", "Commercial Install", "New Construction"])].copy() if not df_rev.empty else pd.DataFrame()
+
+        service_invoice_count = int(len(df_rev_service)) if not df_rev_service.empty else 0
+        install_invoice_count = int(len(df_rev_install)) if not df_rev_install.empty else 0
+
+        service_revenue = float(df_rev_service["amount_dollars"].sum()) if not df_rev_service.empty else 0.0
+        install_revenue = float(df_rev_install["amount_dollars"].sum()) if not df_rev_install.empty else 0.0
+
+        service_avg_ticket = (service_revenue / service_invoice_count) if service_invoice_count > 0 else 0.0
+        install_avg_ticket = (install_revenue / install_invoice_count) if install_invoice_count > 0 else 0.0
+
+        service_avg_ticket_display = _format_currency(service_avg_ticket)
+        install_avg_ticket_display = _format_currency(install_avg_ticket)
+
+        service_avg_ticket_status = "success" if service_avg_ticket >= average_ticket_threshold else "danger"
+        install_avg_ticket_status = "success" if install_avg_ticket >= average_ticket_threshold else "danger"
 
         # -----------------------------------
         # Employee KPIs (cards)
@@ -653,6 +720,12 @@ def get_dashboard_kpis():
         # - Gross profit per hour (approx) YTD using invoice_items unit_cost as cost
         # -----------------------------------
         employee_cards = []
+
+        # Gross profit per hour (YTD)
+        # PENDING: we are intentionally not calculating GP/hr until the business rules are confirmed.
+        gp_per_hour_pending = True
+        gp_per_hour_target = 0.0  # placeholder
+        df_emp_gp = pd.DataFrame(columns=["employee_id", "gross_profit_per_hour_ytd"])
 
         # Build a canonical employee dimension (prefer employees table, fallback to job_employees)
         df_emp_dim = df_employees.copy()
@@ -710,7 +783,36 @@ def get_dashboard_kpis():
                 )
                 df_emp_atv = tmp[["employee_id", "avg_ticket_overall", "overall_invoice_count"]]
 
-        # Callback % per tech YTD (completed jobs tagged callback/recall/warranty)
+        
+        # $ / Day (Service) per tech (billed invoices only)
+        # Definition: service billed revenue / distinct invoice dates (central) for that tech
+        df_emp_daily = pd.DataFrame(columns=["employee_id", "daily_revenue_service"])
+        if (not df_rev_service.empty) and (not df_job_emps.empty):
+            df_tmp = df_rev_service[["invoice_id", "job_id", "amount_dollars", "invoice_date_dt"]].copy()
+            # Central date bucket
+            try:
+                df_tmp["inv_day_central"] = df_tmp["invoice_date_dt"].dt.tz_convert(CENTRAL_TZ).dt.date
+            except Exception:
+                df_tmp["inv_day_central"] = pd.to_datetime(df_tmp["invoice_date_dt"], errors="coerce").dt.date
+
+            df_tmp = df_tmp.merge(
+                df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
+                how="inner",
+                on="job_id",
+            )
+
+            if not df_tmp.empty:
+                g = (
+                    df_tmp.groupby("employee_id")
+                    .agg(service_revenue=("amount_dollars", "sum"), days=("inv_day_central", "nunique"))
+                    .reset_index()
+                )
+                g["daily_revenue_service"] = g.apply(
+                    lambda r: (float(r["service_revenue"]) / float(r["days"])) if float(r["days"]) > 0 else 0.0,
+                    axis=1,
+                )
+                df_emp_daily = g[["employee_id", "daily_revenue_service"]]
+# Callback % per tech YTD (completed jobs tagged callback/recall/warranty)
         df_emp_cb = pd.DataFrame(columns=["employee_id", "callback_jobs_ytd"])
         if not df_completed.empty and not df_job_emps.empty:
             df_cb_jobs = df_completed[df_completed["tags_norm"].fillna("").apply(_is_callback_job)][["job_id"]].copy()
@@ -749,198 +851,12 @@ def get_dashboard_kpis():
                     .rename(columns={"dispatched_employee_id": "employee_id"})
                 )
 
-                # Gross profit per hour (service techs) YTD
-                # Target definition (JC):
-                #   Gross profit dollars per job per technician per hour (NOT installers)
-                #   Gross profit = Revenue - (Labor cost + Parts cost)
-                #   Labor cost = $525 (fixed per job)
-                #   Parts cost = sum(invoice_items.unit_cost * qty)
-                #   Hours = use price-book duration if you have it; otherwise fall back to appointment hours on the job
-                #
-                # Notes / assumptions:
-                # - We only compute this for SERVICE jobs (excludes installs/change-outs) using tags.
-                # - We attribute each job's GP and hours equally across NON-install technicians assigned to the job.
-                # - If no job-level hours are available, metric returns 0 (to avoid divide-by-zero).
-                gp_per_hour_target = 150.0
-                labor_cost_per_job = 525.0  # JC rule
-
-                # Optional: price-book durations (hours) keyed by normalized service name.
-                # If the table doesn't exist yet (or duration is missing), we fall back to appointment hours.
-                PRICEBOOK_DURATION_HOURS: dict[str, float] = {}
-                try:
-                    if _table_exists(conn, "pricebook_services"):
-                        df_pb = conn.execute(
-                            "SELECT name, duration FROM pricebook_services WHERE duration IS NOT NULL"
-                        ).df()
-                        if not df_pb.empty:
-                            df_pb["name_norm"] = df_pb["name"].astype(str).map(_norm_item_name)
-                            # duration from HCP is minutes (int). Convert -> hours.
-                            df_pb["dur_hours"] = pd.to_numeric(df_pb["duration"], errors="coerce").fillna(0.0) / 60.0
-                            df_pb = df_pb[(df_pb["name_norm"] != "") & (df_pb["dur_hours"] > 0)].copy()
-                            # If duplicates exist, keep the max duration as a conservative estimate.
-                            PRICEBOOK_DURATION_HOURS = (
-                                df_pb.groupby("name_norm")["dur_hours"].max().to_dict()
-                            )
-                except Exception:
-                    PRICEBOOK_DURATION_HOURS = {}
-
-                def _norm_item_name(x) -> str:
-                    if x is None or (isinstance(x, float) and pd.isna(x)):
-                        return ""
-                    return str(x).strip().lower()
-
-                def _item_duration_hours(name: str) -> float:
-                    key = _norm_item_name(name)
-                    if not key:
-                        return 0.0
-                    # exact match
-                    if key in PRICEBOOK_DURATION_HOURS:
-                        return float(PRICEBOOK_DURATION_HOURS[key])
-                    # substring match (so "Capacitor - 45/5" can match "capacitor")
-                    for k, v in PRICEBOOK_DURATION_HOURS.items():
-                        if k and k in key:
-                            return float(v)
-                    return 0.0
-
-                df_emp_gp = pd.DataFrame(columns=["employee_id", "gross_profit_per_hour_ytd"])
-
-                if (not df_rev.empty) and (not df_invoice_items.empty) and (not df_job_emps.empty):
-                    # Revenue by job (YTD invoices)
-                    rev_by_job = (
-                        df_rev.groupby("job_id")["amount_dollars"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"amount_dollars": "job_revenue"})
-                    )
-
-                    # Parts cost by job using invoice_items (materials only)
-                    df_items = df_invoice_items.copy()
-                    df_items["type"] = df_items.get("type", "").astype(str).str.lower().str.strip()
-                    df_items = df_items[df_items["type"] == "material"].copy()
-
-                    df_items["qty"] = pd.to_numeric(df_items.get("qty_in_hundredths", 0.0), errors="coerce").fillna(0.0) / 100.0
-                    # Some material lines may not have a reliable qty; treat missing/0 qty as 1 for costing.
-                    df_items.loc[df_items["qty"] <= 0, "qty"] = 1.0
-
-                    df_items["unit_cost_d"] = pd.to_numeric(df_items.get("unit_cost", 0.0), errors="coerce").fillna(0.0)
-
-                    # If unit_cost is missing/zero, we can't infer cost from invoice_items.
-                    # (Optional future: join to pricebook_materials by name and use its cost as a fallback.)
-                    df_items["parts_cost"] = df_items["unit_cost_d"] * df_items["qty"]
-
-                    parts_cost_by_job = (
-                        df_items.groupby("job_id")["parts_cost"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"parts_cost": "parts_cost"})
-                    )
-
-                    # Optional: price-book duration by job from invoice items (sum of per-item durations * qty)
-                    df_items["item_name_norm"] = df_items["name"].apply(_norm_item_name)
-                    df_items["item_duration_hr"] = df_items["item_name_norm"].apply(_item_duration_hours)
-                    df_items["duration_hr"] = df_items["item_duration_hr"] * df_items["qty"]
-                    duration_by_job_pricebook = (
-                        df_items.groupby("job_id")["duration_hr"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"duration_hr": "job_hours_pricebook"})
-                    )
-
-                    # Appointment duration by job (fallback)
-                    job_hours_appt = pd.DataFrame(columns=["job_id", "job_hours_appt"])
-                    if not df_job_appts.empty:
-                        df_ap_job = df_job_appts.copy()
-                        # Filter to YTD completed jobs using job completion date
-                        if not df_jobs.empty:
-                            df_ap_job = df_ap_job.merge(df_jobs[["job_id", "completed_at", "tags_norm"]], how="left", on="job_id")
-                            df_ap_job["completed_at"] = _to_dt_utc(df_ap_job["completed_at"])
-                            df_ap_job = df_ap_job[df_ap_job["completed_at"] >= start_of_year_utc].copy()
-
-                        df_ap_job["duration_hours"] = (df_ap_job["end_dt"] - df_ap_job["start_dt"]).dt.total_seconds() / 3600.0
-                        df_ap_job["duration_hours"] = pd.to_numeric(df_ap_job["duration_hours"], errors="coerce").fillna(0.0)
-                        df_ap_job = df_ap_job[df_ap_job["duration_hours"] > 0].copy()
-
-                        if not df_ap_job.empty:
-                            job_hours_appt = (
-                                df_ap_job.groupby("job_id")["duration_hours"]
-                                .sum()
-                                .reset_index()
-                                .rename(columns={"duration_hours": "job_hours_appt"})
-                            )
-
-                    # Tags by job for service filtering
-                    tags_by_job = df_jobs[["job_id", "tags_norm"]].drop_duplicates() if (not df_jobs.empty) else pd.DataFrame(columns=["job_id", "tags_norm"])
-
-                    # Combine job-level revenue/cost/hours
-                    job_gp = (
-                        rev_by_job
-                        .merge(parts_cost_by_job, how="left", on="job_id")
-                        .merge(duration_by_job_pricebook, how="left", on="job_id")
-                        .merge(job_hours_appt, how="left", on="job_id")
-                        .merge(tags_by_job, how="left", on="job_id")
-                    )
-                    job_gp["parts_cost"] = job_gp["parts_cost"].fillna(0.0)
-                    job_gp["tags_norm"] = job_gp["tags_norm"].fillna("")
-                    job_gp["job_hours_pricebook"] = job_gp.get("job_hours_pricebook", 0.0).fillna(0.0)
-                    job_gp["job_hours_appt"] = job_gp.get("job_hours_appt", 0.0).fillna(0.0)
-
-                    # Only SERVICE jobs for this metric
-                    job_gp = job_gp[job_gp["tags_norm"].apply(_is_service_job)].copy()
-
-                    # Choose job hours: price-book if present, else appointment hours
-                    job_gp["job_hours"] = job_gp.apply(
-                        lambda r: float(r["job_hours_pricebook"]) if float(r["job_hours_pricebook"]) > 0 else float(r["job_hours_appt"]),
-                        axis=1
-                    )
-
-                    # Gross profit per job per JC rules
-                    job_gp["job_cost"] = job_gp["parts_cost"] + float(labor_cost_per_job)
-                    job_gp["job_gross_profit"] = job_gp["job_revenue"] - job_gp["job_cost"]
-
-                    # Assigned employees (exclude installers by ROLE)
-                    df_job_assigned = df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]).copy()
-
-                    if not df_emp_dim.empty and "role" in df_emp_dim.columns:
-                        emp_roles = df_emp_dim[["employee_id", "role"]].copy()
-                        emp_roles["role_norm"] = emp_roles["role"].fillna("").astype(str).str.lower()
-                        df_job_assigned = df_job_assigned.merge(emp_roles[["employee_id", "role_norm"]], how="left", on="employee_id")
-                        df_job_assigned = df_job_assigned[~df_job_assigned["role_norm"].str.contains("install", na=False)].copy()
-                        df_job_assigned.drop(columns=["role_norm"], inplace=True, errors="ignore")
-
-                    job_gp_emp = job_gp.merge(df_job_assigned, how="inner", on="job_id")
-
-                    if not job_gp_emp.empty:
-                        # Tech count per job (for equal split)
-                        tech_count = (
-                            job_gp_emp.groupby("job_id")["employee_id"]
-                            .nunique()
-                            .reset_index()
-                            .rename(columns={"employee_id": "tech_count"})
-                        )
-                        job_gp_emp = job_gp_emp.merge(tech_count, how="left", on="job_id")
-                        job_gp_emp["tech_count"] = job_gp_emp["tech_count"].fillna(1).astype(int)
-
-                        # Allocate GP and hours equally
-                        job_gp_emp["gp_alloc"] = job_gp_emp["job_gross_profit"] / job_gp_emp["tech_count"]
-                        job_gp_emp["hours_alloc"] = job_gp_emp["job_hours"] / job_gp_emp["tech_count"]
-
-                        gp_emp = (
-                            job_gp_emp.groupby("employee_id")
-                            .agg(gross_profit_ytd=("gp_alloc", "sum"), hours_ytd=("hours_alloc", "sum"))
-                            .reset_index()
-                        )
-
-                        gp_emp["gross_profit_per_hour_ytd"] = gp_emp.apply(
-                            lambda r: (float(r["gross_profit_ytd"]) / float(r["hours_ytd"])) if float(r["hours_ytd"]) > 0 else 0.0,
-                            axis=1
-                        )
-
-                        df_emp_gp = gp_emp[["employee_id", "gross_profit_per_hour_ytd"]]
-
-                # Build employee card records
+                
+# Build employee card records
         df_cards = df_emp_dim[["employee_id", "employee_name", "role", "avatar_url", "color_hex"]].copy()
         df_cards = df_cards.merge(df_completed_jobs_emp, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_atv, how="left", on="employee_id")
+        df_cards = df_cards.merge(df_emp_daily, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_cb, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_hours, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_gp, how="left", on="employee_id")
@@ -949,6 +865,7 @@ def get_dashboard_kpis():
         df_cards["callback_jobs_ytd"] = df_cards.get("callback_jobs_ytd", 0).fillna(0).astype(int)
         df_cards["overall_invoice_count"] = df_cards.get("overall_invoice_count", 0).fillna(0).astype(int)
         df_cards["avg_ticket_overall"] = df_cards.get("avg_ticket_overall", 0.0).fillna(0.0).astype(float)
+        df_cards["daily_revenue_service"] = df_cards.get("daily_revenue_service", 0.0).fillna(0.0).astype(float)
         df_cards["appt_hours_ytd"] = df_cards.get("appt_hours_ytd", 0.0).fillna(0.0).astype(float)
         df_cards["gross_profit_per_hour_ytd"] = df_cards.get("gross_profit_per_hour_ytd", 0.0).fillna(0.0).astype(float)
 
@@ -970,13 +887,8 @@ def get_dashboard_kpis():
             else:
                 callback_status = "danger"
 
-            gp_hr = float(r["gross_profit_per_hour_ytd"])
-            if gp_hr >= gp_per_hour_target:
-                gp_status = "success"
-            elif gp_hr >= (gp_per_hour_target * 0.75):
-                gp_status = "warning"
-            else:
-                gp_status = "danger"
+            gp_hr = 0.0
+            gp_status = "pending"
 
             employee_cards.append({
                 "employee_id": r["employee_id"],
@@ -993,6 +905,11 @@ def get_dashboard_kpis():
                 "avg_ticket_overall_status": "success" if float(r["avg_ticket_overall"]) >= avg_ticket_threshold else "danger",
                 "overall_invoice_count": int(r["overall_invoice_count"]),
 
+                # $ / Day (Service)
+                "daily_revenue": float(r.get("daily_revenue_service", 0.0)),
+                "daily_revenue_display": _format_currency(float(r.get("daily_revenue_service", 0.0))),
+                "daily_revenue_status": "success" if float(r.get("daily_revenue_service", 0.0)) >= 1350.0 else "danger",
+
                 # Callback
                 "callback_jobs_ytd": int(r["callback_jobs_ytd"]),
                 "callback_pct_ytd": float(callback_pct),
@@ -1006,8 +923,9 @@ def get_dashboard_kpis():
 
                 # Gross profit per hour (approx)
                 "gross_profit_per_hour_ytd": gp_hr,
-                "gross_profit_per_hour_ytd_display": _format_currency(gp_hr) + "/hr" if gp_hr else "$0/hr",
+                "gross_profit_per_hour_ytd_display": "Pending",
                 "gp_per_hour_target": gp_per_hour_target,
+                "gp_per_hour_pending": gp_per_hour_pending,
                 "gp_per_hour_status": gp_status,
             })
 
@@ -1067,7 +985,235 @@ def get_dashboard_kpis():
                 for _, row in b.iterrows()
             ]
 
+        
         # -----------------------------------
+        # Lead Turnover KPIs (YTD)
+        # - Estimates created
+        # - Won vs Lost (derived from estimate_options approval_status/status rolled up per estimate)
+        # - Win rate
+        # - Estimate to Call ratio (calls proxied by completed jobs YTD, until a true calls table exists)
+        # - Optional breakdowns: by month, by employee, by lead source
+        # -----------------------------------
+        lead_turnover = {
+            "estimates_created_ytd": 0,
+            "estimates_won_ytd": 0,
+            "estimates_lost_ytd": 0,
+            "estimates_pending_ytd": 0,
+            "win_rate_ytd": 0.0,
+            "calls_ytd": int(completed_jobs),  # proxy
+            "estimate_to_call_ratio": 0.0,
+            "month_breakdown": [],
+            "employee_breakdown": [],
+            "lead_source_breakdown": [],
+        }
+
+        def _norm_str(x) -> str:
+            if x is None or (isinstance(x, float) and pd.isna(x)):
+                return ""
+            return str(x).strip().lower()
+
+        def _bucket_option_status(approval_status_val, status_val) -> str:
+            a = _norm_str(approval_status_val)
+            s = _norm_str(status_val)
+
+            won_keys = {"approved", "accepted", "won", "sold", "selected"}
+            lost_keys = {"declined", "rejected", "lost", "canceled", "cancelled", "voided"}
+
+            # Approval status is usually the best signal
+            if a in won_keys:
+                return "won"
+            if a in lost_keys:
+                return "lost"
+
+            # Fall back to status field
+            if s in won_keys:
+                return "won"
+            if s in lost_keys:
+                return "lost"
+
+            return "pending"
+
+        # Filter estimates to YTD
+        df_est_ytd = pd.DataFrame()
+        if not df_estimates.empty:
+            df_estimates = _ensure_columns(df_estimates, {
+                "estimate_id": "object",
+                "created_at": "object",
+                "lead_source": "object",
+            })
+            df_estimates["created_at_dt"] = _to_dt_utc(df_estimates["created_at"])
+            df_est_ytd = df_estimates[df_estimates["created_at_dt"] >= start_of_year_utc].copy()
+
+        if not df_est_ytd.empty:
+            lead_turnover["estimates_created_ytd"] = int(df_est_ytd["estimate_id"].nunique())
+
+            # Roll up options to an estimate outcome
+            if not df_estimate_options.empty:
+                df_estimate_options = _ensure_columns(df_estimate_options, {
+                    "estimate_id": "object",
+                    "status": "object",
+                    "approval_status": "object",
+                })
+
+                opt = df_estimate_options.copy()
+                opt = opt[opt["estimate_id"].isin(df_est_ytd["estimate_id"])].copy()
+                if not opt.empty:
+                    opt["bucket"] = opt.apply(
+                        lambda r: _bucket_option_status(r.get("approval_status"), r.get("status")),
+                        axis=1
+                    )
+
+                    # outcome per estimate: won > lost > pending
+                    def _rollup_bucket(series: pd.Series) -> str:
+                        s = set(series.dropna().astype(str))
+                        if "won" in s:
+                            return "won"
+                        if "lost" in s:
+                            return "lost"
+                        return "pending"
+
+                    est_outcome = (
+                        opt.groupby("estimate_id")["bucket"]
+                        .apply(_rollup_bucket)
+                        .reset_index()
+                        .rename(columns={"bucket": "outcome"})
+                    )
+
+                    df_est_ytd = df_est_ytd.merge(est_outcome, how="left", on="estimate_id")
+                else:
+                    df_est_ytd["outcome"] = "pending"
+            else:
+                df_est_ytd["outcome"] = "pending"
+
+            df_est_ytd["outcome"] = df_est_ytd["outcome"].fillna("pending")
+
+            lead_turnover["estimates_won_ytd"] = int((df_est_ytd["outcome"] == "won").sum())
+            lead_turnover["estimates_lost_ytd"] = int((df_est_ytd["outcome"] == "lost").sum())
+            lead_turnover["estimates_pending_ytd"] = int((df_est_ytd["outcome"] == "pending").sum())
+
+            denom = lead_turnover["estimates_won_ytd"] + lead_turnover["estimates_lost_ytd"]
+            lead_turnover["win_rate_ytd"] = round((lead_turnover["estimates_won_ytd"] / denom) * 100.0, 1) if denom > 0 else 0.0
+
+            calls = int(lead_turnover["calls_ytd"])
+            est_created = int(lead_turnover["estimates_created_ytd"])
+            lead_turnover["estimate_to_call_ratio"] = round((est_created / calls) * 100.0, 1) if calls > 0 else 0.0
+
+            # Month breakdown
+            df_est_ytd["month"] = df_est_ytd["created_at_dt"].dt.to_period("M").astype(str)
+            mb = (
+                df_est_ytd.groupby("month")
+                .agg(
+                    estimates=("estimate_id", "nunique"),
+                    won=("outcome", lambda s: int((s == "won").sum())),
+                    lost=("outcome", lambda s: int((s == "lost").sum())),
+                )
+                .reset_index()
+                .sort_values("month")
+            )
+            lead_turnover["month_breakdown"] = [
+                {
+                    "month": str(r["month"]),
+                    "estimates": int(r["estimates"]),
+                    "won": int(r["won"]),
+                    "lost": int(r["lost"]),
+                    "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                }
+                for _, r in mb.iterrows()
+            ]
+
+            # Lead source breakdown
+            df_est_ytd["lead_source_norm"] = df_est_ytd.get("lead_source", "").fillna("Unknown").astype(str).str.strip()
+            lsb = (
+                df_est_ytd.groupby("lead_source_norm")
+                .agg(
+                    estimates=("estimate_id", "nunique"),
+                    won=("outcome", lambda s: int((s == "won").sum())),
+                    lost=("outcome", lambda s: int((s == "lost").sum())),
+                )
+                .reset_index()
+                .sort_values("estimates", ascending=False)
+            )
+            lead_turnover["lead_source_breakdown"] = [
+                {
+                    "lead_source": str(r["lead_source_norm"]) or "Unknown",
+                    "estimates": int(r["estimates"]),
+                    "won": int(r["won"]),
+                    "lost": int(r["lost"]),
+                    "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                }
+                for _, r in lsb.iterrows()
+            ]
+
+            # Employee breakdown (best-effort via estimate_employees -> employee_id)
+            emp_breakdown = []
+            if not df_estimate_emps.empty:
+                ee = df_estimate_emps.copy()
+                ee = _ensure_columns(ee, {
+                    "estimate_id": "object",
+                    "employee_id": "object",
+                    "first_name": "object",
+                    "last_name": "object",
+                })
+
+                # Normalize join keys (DuckDB can read IDs as numeric-ish in some frames)
+                ee["employee_id"] = ee["employee_id"].astype(str)
+                emp_dim["employee_id"] = emp_dim["employee_id"].astype(str)
+
+                # Prefer the name coming directly from estimate_employees, then fall back to employees/job_employees dimension
+                ee["employee_name_from_est"] = (
+                    ee["first_name"].fillna("").astype(str).str.strip()
+                    + " "
+                    + ee["last_name"].fillna("").astype(str).str.strip()
+                ).str.strip()
+
+                ee = ee.merge(
+                    emp_dim[["employee_id", "employee_name"]],
+                    how="left",
+                    on="employee_id",
+                )
+
+                ee["employee_name"] = (
+                    ee["employee_name"].fillna("").astype(str).str.strip()
+                )
+                ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[ee["employee_name"] == "", "employee_name_from_est"]
+                ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
+                # If we still have no name, fall back to employee_id only if it is non-empty; otherwise mark Unknown
+                _missing_name = ee["employee_name"].eq("") | ee["employee_name"].isna()
+                _has_emp_id = ee["employee_id"].fillna("").astype(str).str.strip().ne("")
+                ee.loc[_missing_name & _has_emp_id, "employee_name"] = ee.loc[_missing_name & _has_emp_id, "employee_id"]
+                ee.loc[~_has_emp_id & _missing_name, "employee_name"] = "Unknown"
+
+                # Attach per-estimate outcome for rollups
+                ee = ee.merge(
+                    est_rollup[["estimate_id", "outcome"]],
+                    how="left",
+                    on="estimate_id",
+                )
+                eb = (
+                    ee.groupby("employee_name")
+                    .agg(
+                        estimates=("estimate_id", "nunique"),
+                        won=("outcome", lambda s: int((s == "won").sum())),
+                        lost=("outcome", lambda s: int((s == "lost").sum())),
+                        pending=("outcome", lambda s: int((s == "pending").sum())),
+                    )
+                    .reset_index()
+                    .sort_values("estimates", ascending=False)
+                )
+            emp_breakdown = [
+                        {
+                            "employee": str(r["employee_name"]) or "Unknown",
+                            "estimates": int(r["estimates"]),
+                            "won": int(r["won"]),
+                            "lost": int(r["lost"]),
+                            "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
+                        }
+                        for _, r in eb.iterrows()
+                    ]
+
+            lead_turnover["employee_breakdown"] = emp_breakdown
+
+# -----------------------------------
         # Refresh status + last_refresh formatting
         # -----------------------------------
         refresh_status = get_refresh_status()
@@ -1094,6 +1240,17 @@ def get_dashboard_kpis():
             "average_ticket_threshold": average_ticket_threshold,
             "invoice_count": invoice_count,
 
+            # Average ticket split (billed invoices only)
+            "service_avg_ticket": service_avg_ticket,
+            "service_avg_ticket_display": service_avg_ticket_display,
+            "service_avg_ticket_status": service_avg_ticket_status,
+            "service_invoice_count": service_invoice_count,
+
+            "install_avg_ticket": install_avg_ticket,
+            "install_avg_ticket_display": install_avg_ticket_display,
+            "install_avg_ticket_status": install_avg_ticket_status,
+            "install_invoice_count": install_invoice_count,
+
             # DFO
             "dfo_pct": dfo_pct,
             "dfo_count": dfo_count,
@@ -1105,9 +1262,13 @@ def get_dashboard_kpis():
 
             # GP/hour config (useful for UI labels)
             "gp_per_hour_target": gp_per_hour_target,
+            "gp_per_hour_pending": gp_per_hour_pending,
 
             # Estimates
             **estimates_kpis,
+
+            # Lead Turnover
+            **lead_turnover,
 
             # Meta
             "last_refresh": refresh_status.get("last_refresh_display", ""),
@@ -1121,8 +1282,6 @@ def get_dashboard_kpis():
 def get_refresh_status():
     conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        # metadata table should already exist; if not, we treat as "no data yet"
-
         row = conn.execute("""
             SELECT value FROM metadata WHERE key = 'last_refresh'
         """).fetchone()
