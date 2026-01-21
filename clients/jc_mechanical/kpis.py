@@ -229,74 +229,78 @@ def _normalize_tags(tags_val) -> str:
 
 
 def _tag_has(tags_norm: str, needle: str) -> bool:
+    """
+    Robust tag matcher.
+
+    Works for:
+      - comma-separated tags (e.g., "commercial, service")
+      - single-phrase tags (e.g., "Commercial Service")
+
+    Rules:
+      - For multi-word needles (phrases), use substring match.
+      - For single-word needles, use a word-boundary style match on common separators.
+    """
     if not tags_norm:
         return False
-    needle = needle.strip().lower()
-    return needle in tags_norm.split(",")
+
+    s = str(tags_norm).strip().lower()
+    n = str(needle).strip().lower()
+    if not n:
+        return False
+
+    # Phrase match
+    if " " in n:
+        return n in s
+
+    # Word-style match across separators
+    import re
+    return re.search(r'(^|[\s,])' + re.escape(n) + r'($|[\s,])', s) is not None
 
 
 def _format_currency(x: float) -> str:
     try:
-        return "${:,.0f}".format(float(x))
+        v = float(x)
+        # Guard against NaN/inf
+        if v != v or v == float("inf") or v == float("-inf"):
+            v = 0.0
+        return "${:,.0f}".format(v)
     except Exception:
         return "$0"
 
 
 def _map_category_from_tags(tags_norm: str) -> str:
     """
-    JC requested revenue categories (7):
-      - Residential Install
-      - Residential Service
-      - Residential Maintenance
-      - Commercial Install
-      - Commercial Service
-      - Commercial Maintenance
-      - New Construction
-
-    Notes:
-    - We intentionally bucket all revenue into these 7 categories to keep charts consistent.
-    - If a job cannot be classified, it will default to New Construction (catch-all) so totals reconcile.
+    JC requested revenue categories:
+      - Residential change out
+      - Commercial change out
+      - Residential demand service
+      - Commercial demand service
+      - Residential maintenance
+      - Commercial maintenance
+    Everything else -> Other / Unclassified
     """
 
-    if not tags_norm:
-        return "New Construction"
-
-    s = tags_norm
-
-    is_res = _tag_has(s, "residential") or ("residential " in s)
-    is_com = _tag_has(s, "commercial") or ("commercial " in s)
-
-    is_new = (
-        _tag_has(s, "new construction")
-        or _tag_has(s, "new-construction")
-        or _tag_has(s, "new build")
-        or _tag_has(s, "new-build")
-        or ("new construction" in s)
-        or ("new build" in s)
-    )
+    is_res = _tag_has(tags_norm, "residential")
+    is_com = _tag_has(tags_norm, "commercial")
 
     is_install = (
-        _tag_has(s, "install")
-        or _tag_has(s, "installation")
-        or _tag_has(s, "change out")
-        or _tag_has(s, "change-out")
-        or (" install" in s)
-        or ("change out" in s)
-        or ("change-out" in s)
+        _tag_has(tags_norm, "install")
+        or _tag_has(tags_norm, "installation")
+        or _tag_has(tags_norm, "change out")
+        or _tag_has(tags_norm, "change-out")
     )
-
-    is_maint = _tag_has(s, "maintenance") or ("maintenance" in s)
-
-    # Service: excludes installs/change-outs when tag says so
+    is_maint = _tag_has(tags_norm, "maintenance")
     is_service = (
-        (_tag_has(s, "service") or _tag_has(s, "demand service") or _tag_has(s, "demand") or (" service" in s))
-        and (not is_install)
+        _tag_has(tags_norm, "service")
+        or _tag_has(tags_norm, "demand service")
+        or _tag_has(tags_norm, "demand")
     )
 
-    # Explicit phrases win
-    if "residential install" in s:
+    # extra phrase matching
+    s = tags_norm
+    if "residential install" in s or "residential change out" in s or "residential change-out" in s:
         is_res, is_install = True, True
-    if "commercial install" in s:
+    if "commercial install" in s or "commercial change out" in s or "commercial change-out" in s:
         is_com, is_install = True, True
     if "residential maintenance" in s:
         is_res, is_maint = True, True
@@ -307,61 +311,19 @@ def _map_category_from_tags(tags_norm: str) -> str:
     if "commercial service" in s or "commercial demand service" in s:
         is_com, is_service = True, True
 
-    if is_new:
-        return "New Construction"
-
-    if is_res and is_install:
-        return "Residential Install"
-    if is_res and is_service:
-        return "Residential Service"
-    if is_res and is_maint:
-        return "Residential Maintenance"
-
-    if is_com and is_install:
-        return "Commercial Install"
-    if is_com and is_service:
-        return "Commercial Service"
-    if is_com and is_maint:
-        return "Commercial Maintenance"
-
-    # Catch-all to keep exactly 7 buckets
-    return "New Construction"
-
-
-def _is_install_job(tags_norm: str) -> bool:
-    if not tags_norm:
-        return False
-    s = tags_norm
-    return (
-        _tag_has(s, "install")
-        or _tag_has(s, "installation")
-        or _tag_has(s, "change out")
-        or _tag_has(s, "change-out")
-        or ("residential install" in s)
-        or ("commercial install" in s)
-        or ("change out" in s)
-        or ("change-out" in s)
-    )
-
-
-def _is_maintenance_job(tags_norm: str) -> bool:
-    if not tags_norm:
-        return False
-    return _tag_has(tags_norm, "maintenance") or ("maintenance" in tags_norm)
-
-
-def _is_new_construction_job(tags_norm: str) -> bool:
-    if not tags_norm:
-        return False
-    s = tags_norm
-    return (
-        _tag_has(s, "new construction")
-        or _tag_has(s, "new-construction")
-        or _tag_has(s, "new build")
-        or _tag_has(s, "new-build")
-        or ("new construction" in s)
-        or ("new build" in s)
-    )
+    if is_install and is_res:
+        return "Residential change out"
+    if is_install and is_com:
+        return "Commercial change out"
+    if is_maint and is_res:
+        return "Residential maintenance"
+    if is_maint and is_com:
+        return "Commercial maintenance"
+    if is_service and is_res:
+        return "Residential demand service"
+    if is_service and is_com:
+        return "Commercial demand service"
+    return "Other / Unclassified"
 
 
 def _is_dfo_job(tags_norm: str) -> bool:
@@ -633,14 +595,14 @@ def get_dashboard_kpis():
 
         # -----------------------------------
         # Revenue (YTD) + Breakdown (YTD)
-        # JC request: Revenue should be BILLED (what we invoice), not cash collected.
-        # So we EXCLUDE paid invoices and only include invoice statuses that represent billed AR.
         # -----------------------------------
-        revenue_statuses = {"open", "pending_payment"}
+        revenue_statuses = {"paid", "open", "pending_payment"}
         df_rev = df_invoices[df_invoices["status"].astype(str).str.lower().isin(revenue_statuses)].copy()
 
         def _effective_dt(row):
-            # Billed timing: prefer service_date, else invoice_date (ignore paid_at)
+            st = str(row.get("status") or "").lower()
+            if st == "paid" and pd.notna(row.get("paid_at_dt")):
+                return row.get("paid_at_dt")
             if pd.notna(row.get("service_date_dt")):
                 return row.get("service_date_dt")
             if pd.notna(row.get("invoice_date_dt")):
@@ -664,78 +626,50 @@ def get_dashboard_kpis():
         total_revenue_ytd = float(df_rev["amount_dollars"].sum()) if not df_rev.empty else 0.0
         total_revenue_ytd_display = _format_currency(total_revenue_ytd)
 
-        # Force exactly 7 buckets in a stable order for the chart
-        CATEGORY_ORDER = [
-            "Residential Install",
-            "Residential Service",
-            "Residential Maintenance",
-            "Commercial Install",
-            "Commercial Service",
-            "Commercial Maintenance",
-            "New Construction",
-        ]
-
-        if not df_rev.empty:
-            breakdown_series = df_rev.groupby("category", dropna=False)["amount_dollars"].sum()
-            # Ensure all 7 show up (even if 0)
-            breakdown_rows = []
-            for cat in CATEGORY_ORDER:
-                breakdown_rows.append({"category": cat, "revenue": float(breakdown_series.get(cat, 0.0))})
-            breakdown = pd.DataFrame(breakdown_rows)
-        else:
-            breakdown = pd.DataFrame([{"category": c, "revenue": 0.0} for c in CATEGORY_ORDER])
+        breakdown = (
+            df_rev.groupby("category", dropna=False)["amount_dollars"]
+            .sum()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={"amount_dollars": "revenue"})
+        )
 
         revenue_breakdown_ytd = []
-        total_breakdown = float(breakdown["revenue"].sum()) if not breakdown.empty else 0.0
+        if not breakdown.empty:
+            total_breakdown = float(breakdown["revenue"].sum())
+            rows = []
+            for _, row in breakdown.iterrows():
+                rev = float(row["revenue"])
+                cat = str(row["category"]).strip() or "Other / Unclassified"
+                pct_raw = (rev / total_breakdown * 100.0) if total_breakdown > 0 else 0.0
+                rows.append({"category": cat, "revenue": rev, "pct_raw": pct_raw})
 
-        rows = []
-        for _, row in breakdown.iterrows():
-            rev = float(row["revenue"])
-            cat = str(row["category"]).strip()
-            pct_raw = (rev / total_breakdown * 100.0) if total_breakdown > 0 else 0.0
-            rows.append({"category": cat, "revenue": rev, "pct_raw": pct_raw})
+            pct_ints = _largest_remainder_int_percentages([r["pct_raw"] for r in rows])
+            max_rev = max((r["revenue"] for r in rows), default=0.0)
 
-        pct_ints = _largest_remainder_int_percentages([r["pct_raw"] for r in rows]) if rows else []
-        max_rev = max((r["revenue"] for r in rows), default=0.0)
-
-        for r, pct_int in zip(rows, pct_ints):
-            pct_of_max = (r["revenue"] / max_rev * 100.0) if max_rev > 0 else 0.0
-            pct_of_max = max(0.0, min(100.0, pct_of_max))
-            revenue_breakdown_ytd.append({
-                "category": r["category"],
-                "revenue": r["revenue"],
-                "revenue_display": _format_currency(r["revenue"]),
-                "pct_of_total": float(pct_int),                 # integer percent, sums to 100
-                "pct_of_total_display": f"{int(pct_int)}%",
-                "pct_of_max": pct_of_max,
-            })
+            for r, pct_int in zip(rows, pct_ints):
+                pct_of_max = (r["revenue"] / max_rev * 100.0) if max_rev > 0 else 0.0
+                pct_of_max = max(0.0, min(100.0, pct_of_max))
+                revenue_breakdown_ytd.append({
+                    "category": r["category"],
+                    "revenue": r["revenue"],
+                    "revenue_display": _format_currency(r["revenue"]),
+                    "pct_of_total": float(pct_int),                 # integer percent, sums to 100
+                    "pct_of_total_display": f"{int(pct_int)}%",
+                    "pct_of_max": pct_of_max,
+                })
 
         # -----------------------------------
-        # KPI: Average Ticket (YTD) - split Service vs Install
-        # Threshold (invoice) remains $450 per KPI chart.
+        # KPI: Average Ticket (overall) YTD
+        # Definition: total revenue YTD / invoice count YTD (statuses above)
         # -----------------------------------
-        df_rev["is_service_job"] = df_rev["tags_norm"].apply(_is_service_job)
-        df_rev["is_install_job"] = df_rev["tags_norm"].apply(_is_install_job)
-
-        df_rev_service = df_rev[df_rev["is_service_job"]].copy()
-        df_rev_install = df_rev[df_rev["is_install_job"]].copy()
-
-        service_invoice_count = int(len(df_rev_service)) if not df_rev_service.empty else 0
-        install_invoice_count = int(len(df_rev_install)) if not df_rev_install.empty else 0
-
-        service_avg_ticket_value = (float(df_rev_service["amount_dollars"].sum()) / service_invoice_count) if service_invoice_count > 0 else 0.0
-        install_avg_ticket_value = (float(df_rev_install["amount_dollars"].sum()) / install_invoice_count) if install_invoice_count > 0 else 0.0
-
-        service_avg_ticket_display = _format_currency(service_avg_ticket_value)
-        install_avg_ticket_display = _format_currency(install_avg_ticket_value)
-
+        invoice_count = int(len(df_rev)) if not df_rev.empty else 0
+        average_ticket_value = (total_revenue_ytd / invoice_count) if invoice_count > 0 else 0.0
         average_ticket_threshold = 450.0
-        # keep legacy fields too (defaults to SERVICE, since this KPI is "Techs on Service")
-        invoice_count = service_invoice_count
-        average_ticket_value = service_avg_ticket_value
         average_ticket_status = "success" if average_ticket_value >= average_ticket_threshold else "danger"
         average_ticket_display = _format_currency(average_ticket_value)
-# -----------------------------------
+
+        # -----------------------------------
         # Employee KPIs (cards)
         # - Completed jobs YTD
         # - Average ticket (overall) YTD (not split)
@@ -777,90 +711,31 @@ def get_dashboard_kpis():
                 .reset_index()
             )
 
-                # Avg ticket (SERVICE) per tech YTD (billed invoices attributed to assigned techs on the job)
-        # Target: $450 per invoice (JC KPI chart)
+        # Avg ticket overall per tech YTD (invoice amounts attributed to all assigned techs on job)
         df_emp_atv = pd.DataFrame(columns=["employee_id", "avg_ticket_overall", "overall_invoice_count"])
-        if 'df_rev_service' in locals() and not df_rev_service.empty and not df_job_emps.empty:
-            df_inv_emp = df_rev_service[["invoice_id", "job_id", "amount_dollars", "effective_dt"]].merge(
+        if not df_rev.empty and not df_job_emps.empty:
+            df_inv_emp = df_rev[["invoice_id", "job_id", "amount_dollars"]].merge(
                 df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
                 how="inner",
                 on="job_id",
             )
             if not df_inv_emp.empty:
-                # Split invoice amounts across techs assigned to the job (avoids double counting)
-                tech_count = (
-                    df_inv_emp.groupby(["invoice_id", "job_id"])["employee_id"]
-                    .nunique()
-                    .reset_index()
-                    .rename(columns={"employee_id": "tech_count"})
-                )
-                df_inv_emp = df_inv_emp.merge(tech_count, how="left", on=["invoice_id", "job_id"])
-                df_inv_emp["tech_count"] = df_inv_emp["tech_count"].fillna(1).astype(int)
-                df_inv_emp["amount_alloc"] = df_inv_emp["amount_dollars"] / df_inv_emp["tech_count"]
-
                 tmp = (
                     df_inv_emp.groupby("employee_id")
                     .agg(
-                        overall_revenue=("amount_alloc", "sum"),
+                        overall_revenue=("amount_dollars", "sum"),
                         overall_invoice_count=("invoice_id", "nunique"),
                     )
                     .reset_index()
                 )
                 tmp["avg_ticket_overall"] = tmp.apply(
-                    lambda r: (float(r["overall_revenue"]) / float(r["overall_invoice_count"])) if float(r["overall_invoice_count"]) > 0 else 0.0,
+                    lambda r: (float(r["overall_revenue"]) / float(r["overall_invoice_count"]))
+                    if float(r["overall_invoice_count"]) > 0 else 0.0,
                     axis=1,
                 )
                 df_emp_atv = tmp[["employee_id", "avg_ticket_overall", "overall_invoice_count"]]
 
-        # Service revenue per day per tech (SERVICE only)
-        # Target: $1350 per day per tech (JC KPI chart)
-        df_emp_daily = pd.DataFrame(columns=["employee_id", "service_revenue_per_day_ytd"])
-        if 'df_rev_service' in locals() and not df_rev_service.empty and not df_job_emps.empty:
-            df_inv_emp2 = df_rev_service[["invoice_id", "job_id", "amount_dollars", "effective_dt"]].merge(
-                df_job_emps[["job_id", "employee_id"]].dropna(subset=["employee_id"]),
-                how="inner",
-                on="job_id",
-            )
-            if not df_inv_emp2.empty:
-                tech_count2 = (
-                    df_inv_emp2.groupby(["invoice_id", "job_id"])["employee_id"]
-                    .nunique()
-                    .reset_index()
-                    .rename(columns={"employee_id": "tech_count"})
-                )
-                df_inv_emp2 = df_inv_emp2.merge(tech_count2, how="left", on=["invoice_id", "job_id"])
-                df_inv_emp2["tech_count"] = df_inv_emp2["tech_count"].fillna(1).astype(int)
-                df_inv_emp2["amount_alloc"] = df_inv_emp2["amount_dollars"] / df_inv_emp2["tech_count"]
-
-                # Compute "work day" in Central time
-                def _day_central(dt):
-                    if pd.isna(dt):
-                        return pd.NaT
-                    try:
-                        return dt.tz_convert(CENTRAL_TZ).date()
-                    except Exception:
-                        return pd.NaT
-
-                df_inv_emp2["day_central"] = df_inv_emp2["effective_dt"].apply(_day_central)
-
-                daily = (
-                    df_inv_emp2.dropna(subset=["day_central"])
-                    .groupby(["employee_id", "day_central"])["amount_alloc"]
-                    .sum()
-                    .reset_index()
-                )
-
-                if not daily.empty:
-                    per_emp = (
-                        daily.groupby("employee_id")
-                        .agg(total_revenue=("amount_alloc", "sum"), days_worked=("day_central", "nunique"))
-                        .reset_index()
-                    )
-                    per_emp["service_revenue_per_day_ytd"] = per_emp.apply(
-                        lambda r: (float(r["total_revenue"]) / float(r["days_worked"])) if float(r["days_worked"]) > 0 else 0.0,
-                        axis=1,
-                    )
-                    df_emp_daily = per_emp[["employee_id", "service_revenue_per_day_ytd"]]
+        # Callback % per tech YTD (completed jobs tagged callback/recall/warranty)
         df_emp_cb = pd.DataFrame(columns=["employee_id", "callback_jobs_ytd"])
         if not df_completed.empty and not df_job_emps.empty:
             df_cb_jobs = df_completed[df_completed["tags_norm"].fillna("").apply(_is_callback_job)][["job_id"]].copy()
@@ -1091,7 +966,6 @@ def get_dashboard_kpis():
         df_cards = df_emp_dim[["employee_id", "employee_name", "role", "avatar_url", "color_hex"]].copy()
         df_cards = df_cards.merge(df_completed_jobs_emp, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_atv, how="left", on="employee_id")
-        df_cards = df_cards.merge(df_emp_daily, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_cb, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_hours, how="left", on="employee_id")
         df_cards = df_cards.merge(df_emp_gp, how="left", on="employee_id")
@@ -1143,11 +1017,6 @@ def get_dashboard_kpis():
                 "avg_ticket_overall_display": _format_currency(float(r["avg_ticket_overall"])),
                 "avg_ticket_overall_status": "success" if float(r["avg_ticket_overall"]) >= avg_ticket_threshold else "danger",
                 "overall_invoice_count": int(r["overall_invoice_count"]),
-
-                # Service revenue per day (YTD)
-                "daily_revenue": float(r.get("service_revenue_per_day_ytd", 0.0)),
-                "daily_revenue_display": _format_currency(float(r.get("service_revenue_per_day_ytd", 0.0))),
-                "daily_revenue_status": "success" if float(r.get("service_revenue_per_day_ytd", 0.0)) >= 1350.0 else "danger",
 
                 # Callback
                 "callback_jobs_ytd": int(r["callback_jobs_ytd"]),
@@ -1246,12 +1115,6 @@ def get_dashboard_kpis():
             # Avg ticket overall (dashboard-level)
             "average_ticket_value": average_ticket_value,
             "average_ticket_display": average_ticket_display,
-
-            # Average ticket split (dashboard-level)
-            "service_avg_ticket_display": service_avg_ticket_display,
-            "install_avg_ticket_display": install_avg_ticket_display,
-            "service_invoice_count": service_invoice_count,
-            "install_invoice_count": install_invoice_count,
             "average_ticket_status": average_ticket_status,
             "average_ticket_threshold": average_ticket_threshold,
             "invoice_count": invoice_count,
