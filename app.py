@@ -1,6 +1,6 @@
 # app.py
 
-from flask import Flask, render_template, request, redirect, send_from_directory, url_for, flash, abort
+from flask import Flask, render_template, request, redirect, send_from_directory, url_for, flash, abort, current_app
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -312,8 +312,6 @@ def dashboard():
         try:
             data = get_dashboard_kpis()
         except Exception as e:
-            import traceback
-            current_app.logger.exception("KPI refresh error")
             data = {
                 "kpi_error": f"KPI refresh error: {type(e).__name__}: {e}"
             }
