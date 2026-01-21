@@ -2606,3 +2606,13 @@ footer {
   color: rgba(255, 255, 255, 0.60);
   padding: 14px 10px;
 }
+
+/* Full-width Lead Turnover card (even if grid rules change) */
+.jc-kpi-lead {
+  grid-column: 1 / -1;
+}
+
+/* Optional: keep the Estimates header from wrapping awkwardly */
+.jc-lead-table thead th:nth-child(2) {
+  white-space: nowrap;
+}

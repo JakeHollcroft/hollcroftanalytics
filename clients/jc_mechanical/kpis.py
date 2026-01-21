@@ -1129,29 +1129,56 @@ def get_dashboard_kpis():
             emp_breakdown = []
             if not df_estimate_emps.empty:
                 ee = df_estimate_emps.copy()
-                ee = _ensure_columns(ee, {"estimate_id": "object", "employee_id": "object"})
-                ee = ee[ee["estimate_id"].isin(df_est_ytd["estimate_id"])].copy()
-                if not ee.empty:
-                    ee = ee.merge(df_est_ytd[["estimate_id", "outcome"]], how="left", on="estimate_id")
+                ee = _ensure_columns(ee, {
+                    "estimate_id": "object",
+                    "employee_id": "object",
+                    "first_name": "object",
+                    "last_name": "object",
+                })
 
-                    # join employee names if available
-                    emp_dim = df_emp_dim[["employee_id", "employee_name"]].drop_duplicates() if "employee_name" in df_emp_dim.columns else pd.DataFrame()
-                    if not emp_dim.empty:
-                        ee = ee.merge(emp_dim, how="left", on="employee_id")
-                    else:
-                        ee["employee_name"] = ee.get("employee_id", "Unknown")
+                # Normalize join keys (DuckDB can read IDs as numeric-ish in some frames)
+                ee["employee_id"] = ee["employee_id"].astype(str)
+                emp_dim["employee_id"] = emp_dim["employee_id"].astype(str)
 
-                    eb = (
-                        ee.groupby("employee_name")
-                        .agg(
-                            estimates=("estimate_id", "nunique"),
-                            won=("outcome", lambda s: int((s == "won").sum())),
-                            lost=("outcome", lambda s: int((s == "lost").sum())),
-                        )
-                        .reset_index()
-                        .sort_values("estimates", ascending=False)
+                # Prefer the name coming directly from estimate_employees, then fall back to employees/job_employees dimension
+                ee["employee_name_from_est"] = (
+                    ee["first_name"].fillna("").astype(str).str.strip()
+                    + " "
+                    + ee["last_name"].fillna("").astype(str).str.strip()
+                ).str.strip()
+
+                ee = ee.merge(
+                    emp_dim[["employee_id", "employee_name"]],
+                    how="left",
+                    on="employee_id",
+                )
+
+                ee["employee_name"] = (
+                    ee["employee_name"].fillna("").astype(str).str.strip()
+                )
+                ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[ee["employee_name"] == "", "employee_name_from_est"]
+                ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
+                ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[ee["employee_name"] == "", "employee_id"]
+                ee.loc[ee["employee_name"].isna() | (ee["employee_name"] == ""), "employee_name"] = "Unknown"
+
+                # Attach per-estimate outcome for rollups
+                ee = ee.merge(
+                    est_rollup[["estimate_id", "outcome"]],
+                    how="left",
+                    on="estimate_id",
+                )
+                eb = (
+                    ee.groupby("employee_name")
+                    .agg(
+                        estimates=("estimate_id", "nunique"),
+                        won=("outcome", lambda s: int((s == "won").sum())),
+                        lost=("outcome", lambda s: int((s == "lost").sum())),
+                        pending=("outcome", lambda s: int((s == "pending").sum())),
                     )
-                    emp_breakdown = [
+                    .reset_index()
+                    .sort_values("estimates", ascending=False)
+                )
+            emp_breakdown = [
                         {
                             "employee": str(r["employee_name"]) or "Unknown",
                             "estimates": int(r["estimates"]),

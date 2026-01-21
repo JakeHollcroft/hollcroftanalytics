@@ -50,6 +50,8 @@
 
 <main id="main-content" role="main">
 
+{% set first_time_completion_pct = first_time_completion_pct|default(0) %}
+{% set first_time_completion_target = first_time_completion_target|default(85) %}
 {% set ftc_bar_class = 'bg-success' if first_time_completion_pct >= first_time_completion_target else 'bg-warning' if first_time_completion_pct >= 75 else 'bg-danger' %}
 
 <div class="jc-footer-refresh">
@@ -253,7 +255,7 @@
 
 
     <!-- LEAD TURNOVER CARD -->
-    <article class="jc-kpi-card jc-kpi-lead" aria-labelledby="kpi-lead-title">
+    <article class="jc-kpi-card jc-kpi-lead jc-kpi-wide" aria-labelledby="kpi-lead-title">
         <div class="jc-kpi-header">
             <div class="jc-kpi-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -314,7 +316,7 @@
                             <thead>
                                 <tr>
                                     <th>Month</th>
-                                    <th>Est</th>
+                                    <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
                                     <th>Win%</th>
@@ -345,7 +347,7 @@
                             <thead>
                                 <tr>
                                     <th>Employee</th>
-                                    <th>Est</th>
+                                    <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
                                     <th>Win%</th>
@@ -376,7 +378,7 @@
                             <thead>
                                 <tr>
                                     <th>Lead source</th>
-                                    <th>Est</th>
+                                    <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
                                     <th>Win%</th>
