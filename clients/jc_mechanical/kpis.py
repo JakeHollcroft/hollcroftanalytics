@@ -12,7 +12,6 @@ DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 
 
 def _duckdb_connect_readonly(db_file: Path, attempts: int = 6, base_sleep_s: float = 0.25) -> duckdb.DuckDBPyConnection:
-    \"\"\"Open DuckDB in READ_ONLY mode with simple backoff to avoid transient file-lock collisions.\"\"\"
     last_err: Exception | None = None
     for i in range(attempts):
         try:
