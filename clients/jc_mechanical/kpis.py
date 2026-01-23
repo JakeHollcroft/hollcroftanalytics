@@ -1180,9 +1180,11 @@ def get_dashboard_kpis():
                 ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
                 # If we still have no name, fall back to employee_id only if it is non-empty; otherwise mark Unknown
                 _missing_name = ee["employee_name"].eq("") | ee["employee_name"].isna()
-                _has_emp_id = ee["employee_id"].fillna("").astype(str).str.strip().ne("")
-                ee.loc[_missing_name & _has_emp_id, "employee_name"] = ee.loc[_missing_name & _has_emp_id, "employee_id"]
-                ee.loc[~_has_emp_id & _missing_name, "employee_name"] = "Unknown"
+                ee.loc[_missing_name, "employee_name"] = "Unassigned"
+
+                # Optional: if anything still looks like an ID (pro_*), force it to Unassigned anyway
+                looks_like_id = ee["employee_name"].astype(str).str.match(r"^pro_[0-9a-f]{32}$", na=False)
+                ee.loc[looks_like_id, "employee_name"] = "Unassigned"
 
                 # Attach per-estimate outcome for rollups
                 # df_est_ytd is one row per estimate and contains the derived `outcome`
