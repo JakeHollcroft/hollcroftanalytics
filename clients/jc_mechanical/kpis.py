@@ -1204,7 +1204,7 @@ def get_dashboard_kpis():
                 )
                 emp_breakdown = [
                     {
-                        "employee": str(r["employee_name"]) or "Unknown",
+                        "employee_name": str(r["employee_name"]) or "Unknown",
                         "estimates": int(r["estimates"]),
                         "won": int(r["won"]),
                         "lost": int(r["lost"]),
