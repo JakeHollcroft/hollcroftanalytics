@@ -2807,3 +2807,149 @@ footer {
   margin-top: 10px;
   font-size: 0.9rem;
 }
+
+
+/* =========================
+   Club Agreement KPI (YTD) — simplified layout
+   ========================= */
+
+.jc-status-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:0.78rem;
+  font-weight:700;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+  border:1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+}
+
+.jc-status-pill.jc-status-success{
+  border-color: rgba(34,197,94,0.35);
+  background: rgba(34,197,94,0.10);
+  color: rgba(170, 255, 200, 0.95);
+}
+.jc-status-pill.jc-status-warning{
+  border-color: rgba(245,158,11,0.40);
+  background: rgba(245,158,11,0.10);
+  color: rgba(255, 224, 170, 0.95);
+}
+.jc-status-pill.jc-status-danger{
+  border-color: rgba(239,68,68,0.45);
+  background: rgba(239,68,68,0.10);
+  color: rgba(255, 180, 180, 0.95);
+}
+
+.jc-club-layout{
+  display:grid;
+  grid-template-columns: 1.6fr 1fr;
+  grid-template-areas:
+    "hero stats"
+    "trend trend";
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.jc-club-hero{
+  grid-area: hero;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.14);
+}
+
+.jc-club-hero-value{
+  font-size: clamp(2.6rem, 4.2vw, 3.4rem);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.0;
+}
+
+.jc-club-hero-sub{
+  margin-top: 10px;
+  font-size: 1rem;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.jc-club-bar{
+  margin-top: 14px;
+}
+
+.jc-club-bar-track{
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+}
+
+.jc-club-bar-fill{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(42,167,224,0.75);
+}
+
+.jc-club-bar-fill.jc-status-success{ background: rgba(34,197,94,0.75); }
+.jc-club-bar-fill.jc-status-warning{ background: rgba(245,158,11,0.75); }
+.jc-club-bar-fill.jc-status-danger{ background: rgba(239,68,68,0.75); }
+
+.jc-club-bar-labels{
+  margin-top: 8px;
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.jc-club-stats{
+  grid-area: stats;
+  display:grid;
+  gap: 12px;
+}
+
+.jc-mini-stat{
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.12);
+}
+
+.jc-mini-stat-label{
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.72);
+  margin-bottom: 6px;
+}
+
+.jc-mini-stat-value{
+  font-size: 1.6rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+.jc-club-trend{
+  grid-area: trend;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.10);
+}
+
+.jc-num{ text-align: right; }
+.jc-center{ text-align: center; }
+.jc-muted{ color: rgba(226, 232, 240, 0.65); }
+
+@media (max-width: 980px){
+  .jc-club-layout{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "hero"
+      "stats"
+      "trend";
+  }
+}
+

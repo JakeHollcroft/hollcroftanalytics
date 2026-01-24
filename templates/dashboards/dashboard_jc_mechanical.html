@@ -562,6 +562,13 @@
 
 <!-- CLUB AGREEMENT KPI CARD -->
 <article class="jc-kpi-card jc-kpi-club jc-kpi-wide jc-kpi-full" aria-labelledby="kpi-club-title">
+  {% set club_pct = club_conversion_pct_ytd|default(club_conversion_pct|default(0.0)) %}
+  {% set club_pct_display = club_conversion_pct_ytd_display|default(club_conversion_pct_display|default(club_conversion_pct_display|default('—'))) %}
+  {% set club_total = total_service_calls_ytd|default(eligible_service_calls_ytd|default(0)) %}
+  {% set club_calls = club_service_calls_ytd|default(club_calls_ytd|default(0)) %}
+  {% set nonclub_calls = (club_total - club_calls) if (club_total is not none and club_calls is not none) else nonclub_service_calls_ytd|default(0) %}
+  {% set club_status = club_conversion_status|default('success' if club_pct >= 0.50 else ('warning' if club_pct >= 0.30 else 'danger')) %}
+
   <div class="jc-kpi-header">
     <div class="jc-kpi-icon">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -571,118 +578,86 @@
         <path d="M21 10h-2"></path>
       </svg>
     </div>
+
     <div class="jc-kpi-meta">
       <div class="jc-kpi-label" id="kpi-club-title">Club Agreement Conversion (YTD)</div>
       <div class="jc-kpi-badge">Growth KPI</div>
     </div>
 
-    <div class="jc-kpi-badge jc-kpi-badge-soft jc-club-signal" title="How we detect club jobs">
-      Signals: Tags · Description · Invoice items
+    <div class="jc-kpi-actions">
+      <span class="jc-status-pill jc-status-{{ club_status }}">Target: {{ (club_conversion_target|default(0.50) * 100)|round(0)|int }}%</span>
     </div>
   </div>
 
-  <div class="jc-club-hero">
-    <div class="jc-club-rate">
-      <div class="jc-club-rate-value">{{ club_conversion_pct_display|default('—') }}</div>
-      <div class="jc-club-rate-sub">
-        {{ club_calls_ytd|default(0) }} club jobs out of {{ eligible_service_calls_ytd|default(0) }} eligible service calls
+  <div class="jc-club-layout">
+    <div class="jc-club-hero">
+      <div class="jc-club-hero-value jc-status-{{ club_status }}">{{ club_pct_display }}</div>
+      <div class="jc-club-hero-sub">{{ club_calls }} club jobs out of {{ club_total }} eligible service calls</div>
+
+      <div class="jc-club-bar">
+        <div class="jc-club-bar-track" aria-hidden="true">
+          <div class="jc-club-bar-fill jc-status-{{ club_status }}" data-fill="{{ (club_pct * 100)|round(2) }}"></div>
+        </div>
+        <div class="jc-club-bar-labels">
+          <span>0%</span>
+          <span>{{ (club_conversion_target|default(0.50) * 100)|round(0)|int }}% target</span>
+          <span>100%</span>
+        </div>
       </div>
     </div>
 
     <div class="jc-club-stats">
-      <div class="jc-club-stat">
-        <div class="jc-club-stat-label">Eligible service calls</div>
-        <div class="jc-club-stat-value">{{ eligible_service_calls_ytd|default(0) }}</div>
+      <div class="jc-mini-stat">
+        <div class="jc-mini-stat-label">Eligible service calls</div>
+        <div class="jc-mini-stat-value">{{ club_total }}</div>
       </div>
-      <div class="jc-club-stat">
-        <div class="jc-club-stat-label">Club jobs (YTD)</div>
-        <div class="jc-club-stat-value">{{ club_calls_ytd|default(0) }}</div>
-      </div>
-      <div class="jc-club-stat">
-        <div class="jc-club-stat-label">Non-club jobs (YTD)</div>
-        <div class="jc-club-stat-value">{{ nonclub_service_calls_ytd|default(0) }}</div>
-      </div>
-    </div>
-  </div>
 
-  <div class="jc-club-breakdown" aria-label="Club conversion by signal source">
-    <div class="jc-club-break-row">
-      <div class="jc-club-break-label">From tags</div>
-      <div class="jc-club-break-metric">
-        <span class="pill">{{ club_calls_from_tags|default(0) }} jobs</span>
-        <span class="jc-club-break-pct">{{ pct_from_tags_display|default(pct_from_tags|default('0')) }}%</span>
+      <div class="jc-mini-stat">
+        <div class="jc-mini-stat-label">Club jobs (YTD)</div>
+        <div class="jc-mini-stat-value">{{ club_calls }}</div>
+      </div>
+
+      <div class="jc-mini-stat">
+        <div class="jc-mini-stat-label">Non-club jobs (YTD)</div>
+        <div class="jc-mini-stat-value">{{ nonclub_calls }}</div>
       </div>
     </div>
 
-    <div class="jc-club-break-row">
-      <div class="jc-club-break-label">From description</div>
-      <div class="jc-club-break-metric">
-        <span class="pill">{{ club_calls_from_description|default(0) }} jobs</span>
-        <span class="jc-club-break-pct">{{ pct_from_description_display|default(pct_from_description|default('0')) }}%</span>
-      </div>
-    </div>
+    <div class="jc-club-trend">
+      <div class="jc-section-title">Monthly trend (YTD)</div>
 
-    <div class="jc-club-break-row">
-      <div class="jc-club-break-label">From invoice items</div>
-      <div class="jc-club-break-metric">
-        <span class="pill">{{ club_calls_from_invoice_items|default(0) }} jobs</span>
-        <span class="jc-club-break-pct">{{ pct_from_invoice_items_display|default(pct_from_invoice_items|default('0')) }}%</span>
-      </div>
-    </div>
-  </div>
-
-  <details class="jc-club-details">
-    <summary>See detection keywords + monthly trend</summary>
-
-    <div class="jc-club-details-grid">
-      <div class="jc-club-panel">
-        <div class="jc-club-panel-title">Keywords used</div>
-        <div class="jc-club-keywords">
-          {% if club_keywords %}
-            {% for kw in club_keywords %}
-              <span class="pill">{{ kw }}</span>
-            {% endfor %}
-          {% else %}
-            <span class="jc-muted">No keywords configured.</span>
-          {% endif %}
-        </div>
-        <div class="jc-muted jc-club-hint">
-          Tip: tags often won’t include “club” even for maintenance customers. Description and invoice items can be better signals.
-        </div>
-      </div>
-
-      <div class="jc-club-panel">
-        <div class="jc-club-panel-title">Monthly trend (YTD)</div>
-        <div class="jc-table-wrap">
-          <table class="table table-sm jc-table">
-            <thead>
+      <div class="jc-table-container">
+        <table class="jc-data-table">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th class="jc-num">Eligible service calls</th>
+              <th class="jc-num">Club jobs</th>
+              <th class="jc-num">Conversion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if club_monthly_trend and club_monthly_trend|length > 0 %}
+              {% for r in club_monthly_trend %}
               <tr>
-                <th>Month</th>
-                <th class="text-end">Service calls</th>
-                <th class="text-end">Club jobs</th>
-                <th class="text-end">Conversion</th>
+                <td>{{ r.month }}</td>
+                <td class="jc-num">{{ r.service_calls }}</td>
+                <td class="jc-num">{{ r.club_calls|default(r.club_jobs|default(r.club_service_calls|default(r.club_calls_ytd|default(0)))) }}</td>
+                <td class="jc-num">{{ r.club_conversion_pct_ytd_display|default(r.club_conversion_pct_display|default(r.club_conversion_pct_display|default(r.club_conversion_pct))) }}</td>
               </tr>
-            </thead>
-            <tbody>
-              {% if club_monthly %}
-                {% for r in club_monthly %}
-                  <tr>
-                    <td>{{ r.month }}</td>
-                    <td class="text-end">{{ r.service_calls }}</td>
-                    <td class="text-end">{{ r.club_calls }}</td>
-                    <td class="text-end">{{ r.club_conversion_pct_display|default(r.club_conversion_pct) }}</td>
-                  </tr>
-                {% endfor %}
-              {% else %}
-                <tr><td colspan="4" class="jc-empty-cell">No monthly club data yet.</td></tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" class="jc-muted jc-center">No YTD club conversion data yet.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
       </div>
     </div>
-  </details>
+  </div>
 </article>
+
 
 <!-- Employee KPI CARDS SECTION -->
 <section class="jc-employee-section" aria-label="Technician KPIs">
@@ -1080,5 +1055,16 @@
 </script>
 
 
+<script>
+  // Sets KPI progress bar widths without embedding Jinja inside CSS (prevents editor CSS parse errors)
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.jc-club-bar-fill[data-fill]').forEach(el => {
+      const raw = parseFloat(el.dataset.fill);
+      if (!Number.isFinite(raw)) return;
+      const v = Math.max(0, Math.min(100, raw));
+      el.style.width = v + '%';
+    });
+  });
+</script>
 </body>
 </html>
