@@ -3,85 +3,117 @@
 from __future__ import annotations
 
 import pandas as pd
-from .helpers import format_currency
+
+
+def _ensure_columns(df: pd.DataFrame, cols_with_dtypes: dict) -> pd.DataFrame:
+    """
+    Minimal local version so this module doesn't depend on your main kpis.py helpers.
+    """
+    if df is None or df.empty:
+        # still return a DataFrame with expected columns if possible
+        out = pd.DataFrame()
+        for col, dtype in cols_with_dtypes.items():
+            try:
+                out[col] = pd.Series(dtype=dtype)
+            except Exception:
+                out[col] = pd.Series(dtype="object")
+        return out
+
+    df = df.copy()
+    for col, dtype in cols_with_dtypes.items():
+        if col not in df.columns:
+            try:
+                df[col] = pd.Series(dtype=dtype)
+            except Exception:
+                df[col] = pd.Series(dtype="object")
+    return df
+
+
+def _to_dt_utc(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce", utc=True)
+
+
+def _format_currency(x: float) -> str:
+    try:
+        v = float(x)
+        if v != v or v in (float("inf"), float("-inf")):
+            v = 0.0
+        return "${:,.0f}".format(v)
+    except Exception:
+        return "$0"
 
 
 def compute(ctx: dict) -> dict:
-    df_estimates: pd.DataFrame = ctx.get("df_estimates", pd.DataFrame()).copy()
-    df_estimate_options: pd.DataFrame = ctx.get("df_estimate_options", pd.DataFrame()).copy()
-    df_estimate_emps: pd.DataFrame = ctx.get("df_estimate_emps", pd.DataFrame()).copy()
+    """
+    Estimates KPIs (best-effort) - matches the earlier in-file logic:
 
-    start_utc = ctx.get("start_of_year_utc")
+    - total estimates YTD
+    - estimate status mix by option.status and/or approval_status
 
-    # Default output shape (safe even if tables are empty)
-    out = {
-        "estimates_created_ytd": 0,
-        "estimates_approved_ytd": 0,
-        "estimates_declined_ytd": 0,
-        "estimates_pending_ytd": 0,
-        "estimates_total_value_ytd": 0.0,
-        "estimates_total_value_ytd_display": "$0",
+    Returns keys:
+      - estimates_ytd_count
+      - estimate_options_status_breakdown
+    """
+    start_of_year_utc = ctx["start_of_year_utc"]
+
+    df_estimates: pd.DataFrame = ctx.get("df_estimates", pd.DataFrame())
+    df_estimate_options: pd.DataFrame = ctx.get("df_estimate_options", pd.DataFrame())
+
+    estimates_kpis = {
+        "estimates_ytd_count": 0,
+        "estimate_options_status_breakdown": [],
     }
 
-    if df_estimates.empty:
-        return out
+    # total estimates YTD
+    if df_estimates is not None and not df_estimates.empty:
+        df_estimates = _ensure_columns(
+            df_estimates,
+            {
+                "created_at": "object",
+                "estimate_id": "object",
+            },
+        )
+        df_estimates["created_at_dt"] = _to_dt_utc(df_estimates["created_at"])
+        df_est_ytd = df_estimates[df_estimates["created_at_dt"] >= start_of_year_utc].copy()
+        estimates_kpis["estimates_ytd_count"] = int(len(df_est_ytd))
 
-    # Defensive columns
-    for col in ["estimate_id", "created_at", "status", "lead_source"]:
-        if col not in df_estimates.columns:
-            df_estimates[col] = None
+    # option status / approval status breakdown
+    if df_estimate_options is not None and not df_estimate_options.empty:
+        df_estimate_options = _ensure_columns(
+            df_estimate_options,
+            {
+                "status": "object",
+                "approval_status": "object",
+                "total_amount": "float64",
+            },
+        )
 
-    df_estimates["created_at_dt"] = pd.to_datetime(df_estimates["created_at"], errors="coerce", utc=True)
-    if start_utc is not None:
-        df_estimates = df_estimates[df_estimates["created_at_dt"] >= start_utc].copy()
+        tmp = df_estimate_options.copy()
+        tmp["status_norm"] = tmp["status"].fillna("").astype(str).str.lower().str.strip()
+        tmp["approval_norm"] = tmp["approval_status"].fillna("").astype(str).str.lower().str.strip()
+        tmp["bucket"] = tmp.apply(
+            lambda r: r["approval_norm"] if r["approval_norm"] else (r["status_norm"] if r["status_norm"] else "unknown"),
+            axis=1,
+        )
 
-    out["estimates_created_ytd"] = int(len(df_estimates))
+        b = (
+            tmp.groupby("bucket")
+            .agg(
+                option_count=("bucket", "count"),
+                total_amount=("total_amount", "sum"),
+            )
+            .reset_index()
+            .sort_values("option_count", ascending=False)
+        )
 
-    # Option statuses (best-effort)
-    # If your system defines approvals on estimate_options, use it; otherwise fallback to estimates.status
-    if not df_estimate_options.empty:
-        for col in ["estimate_id", "approval_status", "status", "total_amount"]:
-            if col not in df_estimate_options.columns:
-                df_estimate_options[col] = None
+        estimates_kpis["estimate_options_status_breakdown"] = [
+            {
+                "bucket": str(row["bucket"]),
+                "option_count": int(row["option_count"]),
+                "total_amount": float(row["total_amount"] or 0.0),
+                "total_amount_display": _format_currency(float(row["total_amount"] or 0.0)),
+            }
+            for _, row in b.iterrows()
+        ]
 
-        df_estimate_options["total_amount_dollars"] = pd.to_numeric(
-            df_estimate_options["total_amount"], errors="coerce"
-        ).fillna(0.0).astype(float)
-
-        opt = df_estimate_options.copy()
-        opt = opt[opt["estimate_id"].isin(df_estimates["estimate_id"])].copy()
-
-        def _norm(x):
-            if x is None or (isinstance(x, float) and pd.isna(x)):
-                return ""
-            return str(x).strip().lower()
-
-        def _bucket(approval_status_val, status_val) -> str:
-            a = _norm(approval_status_val)
-            s = _norm(status_val)
-            won_keys = {"approved", "accepted", "won", "sold", "selected"}
-            lost_keys = {"declined", "rejected", "lost", "expired", "canceled", "cancelled", "void", "deleted"}
-
-            if a in won_keys or s in won_keys:
-                return "won"
-            if a in lost_keys or s in lost_keys:
-                return "lost"
-            return "pending"
-
-        opt["bucket"] = opt.apply(lambda r: _bucket(r.get("approval_status"), r.get("status")), axis=1)
-
-        out["estimates_approved_ytd"] = int((opt["bucket"] == "won").sum())
-        out["estimates_declined_ytd"] = int((opt["bucket"] == "lost").sum())
-        out["estimates_pending_ytd"] = int((opt["bucket"] == "pending").sum())
-
-        out["estimates_total_value_ytd"] = float(opt["total_amount_dollars"].sum())
-        out["estimates_total_value_ytd_display"] = format_currency(out["estimates_total_value_ytd"])
-
-    else:
-        # Fallback to estimate status only
-        s = df_estimates["status"].astype(str).str.lower()
-        out["estimates_approved_ytd"] = int(s.isin(["approved", "accepted", "won", "sold"]).sum())
-        out["estimates_declined_ytd"] = int(s.isin(["declined", "rejected", "lost", "expired", "canceled", "cancelled"]).sum())
-        out["estimates_pending_ytd"] = out["estimates_created_ytd"] - out["estimates_approved_ytd"] - out["estimates_declined_ytd"]
-
-    return out
+    return estimates_kpis

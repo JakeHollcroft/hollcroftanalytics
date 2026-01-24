@@ -1,18 +1,27 @@
 # clients/jc_mechanical/kpi_parts/kpi_lead_turnover.py
 
-from __future__ import annotations
-
 import pandas as pd
 
+from .helpers import _ensure_columns
 
-def compute(ctx: dict) -> dict:
+
+def compute(ctx):
     completed_jobs = int(ctx.get("completed_jobs", 0))
-    start_utc = ctx.get("start_of_year_utc")
+    start_of_year_utc = ctx["start_of_year_utc"]
 
-    df_estimates: pd.DataFrame = ctx.get("df_estimates", pd.DataFrame()).copy()
-    df_estimate_options: pd.DataFrame = ctx.get("df_estimate_options", pd.DataFrame()).copy()
-    df_estimate_emps: pd.DataFrame = ctx.get("df_estimate_emps", pd.DataFrame()).copy()
+    df_estimates = ctx.get("df_estimates", pd.DataFrame()).copy()
+    df_estimate_options = ctx.get("df_estimate_options", pd.DataFrame()).copy()
+    df_estimate_emps = ctx.get("df_estimate_emps", pd.DataFrame()).copy()
+    df_emp_dim = ctx.get("df_emp_dim", pd.DataFrame()).copy()
 
+    # -----------------------------------
+    # Lead Turnover KPIs (YTD)
+    # - Estimates created
+    # - Won vs Lost (derived from estimate_options approval_status/status rolled up per estimate)
+    # - Win rate
+    # - Estimate to Call ratio (calls proxied by completed jobs YTD, until a true calls table exists)
+    # - Optional breakdowns: by month, by employee, by lead source
+    # -----------------------------------
     lead_turnover = {
         "estimates_created_ytd": 0,
         "estimates_won_ytd": 0,
@@ -26,21 +35,6 @@ def compute(ctx: dict) -> dict:
         "lead_source_breakdown": [],
     }
 
-    if df_estimates.empty:
-        return lead_turnover
-
-    for col in ["estimate_id", "created_at", "lead_source"]:
-        if col not in df_estimates.columns:
-            df_estimates[col] = None
-
-    df_estimates["created_at_dt"] = pd.to_datetime(df_estimates["created_at"], errors="coerce", utc=True)
-    if start_utc is not None:
-        df_estimates = df_estimates[df_estimates["created_at_dt"] >= start_utc].copy()
-
-    lead_turnover["estimates_created_ytd"] = int(len(df_estimates))
-    if lead_turnover["calls_ytd"] > 0:
-        lead_turnover["estimate_to_call_ratio"] = round(lead_turnover["estimates_created_ytd"] / lead_turnover["calls_ytd"], 3)
-
     def _norm_str(x) -> str:
         if x is None or (isinstance(x, float) and pd.isna(x)):
             return ""
@@ -51,13 +45,28 @@ def compute(ctx: dict) -> dict:
         s = _norm_str(status_val)
 
         won_keys = {
-            "approved", "pro approved", "accepted", "won", "sold", "selected",
-            "created job from estimate", "complete rated", "complete unrated",
-            "scheduled", "in progress",
+            "approved",
+            "pro approved",
+            "accepted",
+            "won",
+            "sold",
+            "selected",
+            "created job from estimate",
+            "complete rated",
+            "complete unrated",
+            "scheduled",
+            "in progress",
         }
         lost_keys = {
-            "declined", "pro declined", "rejected", "lost", "expired",
-            "canceled", "cancelled", "deleted", "void",
+            "declined",
+            "pro declined",
+            "rejected",
+            "lost",
+            "expired",
+            "canceled",
+            "cancelled",
+            "deleted",
+            "void",
         }
 
         if a in won_keys or s in won_keys:
@@ -66,65 +75,231 @@ def compute(ctx: dict) -> dict:
             return "lost"
         return "pending"
 
-    # Determine won/lost/pending primarily from estimate_options when present
+    if df_estimates.empty:
+        return lead_turnover
+
+    df_estimates = _ensure_columns(
+        df_estimates,
+        {
+            "estimate_id": "object",
+            "created_at": "object",
+            "lead_source": "object",
+        },
+    )
+
+    df_estimates["created_at_dt"] = pd.to_datetime(df_estimates["created_at"], errors="coerce", utc=True)
+    df_est_ytd = df_estimates[df_estimates["created_at_dt"] >= start_of_year_utc].copy()
+
+    lead_turnover["estimates_created_ytd"] = int(len(df_est_ytd))
+    if lead_turnover["calls_ytd"] > 0:
+        lead_turnover["estimate_to_call_ratio"] = round(
+            lead_turnover["estimates_created_ytd"] / lead_turnover["calls_ytd"], 3
+        )
+
+    # Derive outcome per estimate (won/lost/pending) using estimate_options if available
     if not df_estimate_options.empty:
-        for col in ["estimate_id", "approval_status", "status"]:
-            if col not in df_estimate_options.columns:
-                df_estimate_options[col] = None
+        eo = df_estimate_options.copy()
+        eo = _ensure_columns(
+            eo,
+            {
+                "estimate_id": "object",
+                "approval_status": "object",
+                "status": "object",
+            },
+        )
 
-        eo = df_estimate_options[df_estimate_options["estimate_id"].isin(df_estimates["estimate_id"])].copy()
-        eo["bucket"] = eo.apply(lambda r: _bucket_option_status(r.get("approval_status"), r.get("status")), axis=1)
+        eo["estimate_id"] = eo["estimate_id"].astype(str)
+        df_est_ytd["estimate_id"] = df_est_ytd["estimate_id"].astype(str)
 
-        # Collapse multiple options per estimate to a single bucket
-        # Priority: won > lost > pending
-        bucket_rank = {"won": 3, "lost": 2, "pending": 1}
-        eo["rank"] = eo["bucket"].map(bucket_rank).fillna(1).astype(int)
-        best = eo.sort_values(["estimate_id", "rank"], ascending=[True, False]).drop_duplicates("estimate_id")
+        eo = eo[eo["estimate_id"].isin(df_est_ytd["estimate_id"])].copy()
+        if not eo.empty:
+            eo["outcome"] = eo.apply(
+                lambda r: _bucket_option_status(r.get("approval_status"), r.get("status")),
+                axis=1,
+            )
 
-        won = int((best["bucket"] == "won").sum())
-        lost = int((best["bucket"] == "lost").sum())
-        pending = int((best["bucket"] == "pending").sum())
+            # Collapse to one row per estimate (priority: won > lost > pending)
+            outcome_rank = {"won": 3, "lost": 2, "pending": 1}
+            eo["rank"] = eo["outcome"].map(outcome_rank).fillna(1).astype(int)
+            eo_best = (
+                eo.sort_values(["estimate_id", "rank"], ascending=[True, False])
+                .drop_duplicates("estimate_id")
+                .copy()
+            )
+
+            df_est_ytd = df_est_ytd.merge(
+                eo_best[["estimate_id", "outcome"]],
+                how="left",
+                on="estimate_id",
+            )
+        else:
+            df_est_ytd["outcome"] = "pending"
     else:
-        # Fallback to estimate status
-        s = df_estimates.get("status", "").astype(str).str.lower()
-        won = int(s.isin(["approved", "accepted", "won", "sold"]).sum())
-        lost = int(s.isin(["declined", "rejected", "lost", "expired", "canceled", "cancelled", "void"]).sum())
-        pending = int(len(df_estimates) - won - lost)
+        df_est_ytd["outcome"] = "pending"
+
+    # Fill any missing outcomes
+    df_est_ytd["outcome"] = df_est_ytd["outcome"].fillna("pending").astype(str)
+
+    won = int((df_est_ytd["outcome"] == "won").sum())
+    lost = int((df_est_ytd["outcome"] == "lost").sum())
+    pending = int((df_est_ytd["outcome"] == "pending").sum())
 
     lead_turnover["estimates_won_ytd"] = won
     lead_turnover["estimates_lost_ytd"] = lost
     lead_turnover["estimates_pending_ytd"] = pending
     lead_turnover["win_rate_ytd"] = round((won / (won + lost)) * 100.0, 1) if (won + lost) > 0 else 0.0
 
-    # Month breakdown
-    df_m = df_estimates.copy()
+    # Monthly breakdown
+    df_m = df_est_ytd.copy()
     df_m["month"] = df_m["created_at_dt"].dt.to_period("M")
-    month_counts = df_m.groupby("month").size()
+    mb = (
+        df_m.groupby("month")
+        .agg(
+            estimates=("estimate_id", "nunique"),
+            won=("outcome", lambda s: int((s == "won").sum())),
+            lost=("outcome", lambda s: int((s == "lost").sum())),
+            pending=("outcome", lambda s: int((s == "pending").sum())),
+        )
+        .reset_index()
+        .sort_values("month", ascending=True)
+    )
 
-    for month, cnt in month_counts.sort_index().items():
-        lead_turnover["month_breakdown"].append({"month": str(month), "estimates_created": int(cnt)})
+    lead_turnover["month_breakdown"] = [
+        {
+            "month": str(r["month"]),
+            "estimates": int(r["estimates"]),
+            "won": int(r["won"]),
+            "lost": int(r["lost"]),
+            "pending": int(r["pending"]),
+            "win_rate": round(
+                (int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1
+            )
+            if (int(r["won"]) + int(r["lost"])) > 0
+            else 0.0,
+        }
+        for _, r in mb.iterrows()
+    ]
 
     # Lead source breakdown
-    if "lead_source" in df_estimates.columns:
-        ls = df_estimates["lead_source"].fillna("").astype(str).str.strip()
-        ls_counts = ls.value_counts()
-        for src, cnt in ls_counts.items():
-            lead_turnover["lead_source_breakdown"].append({"lead_source": src or "Unknown", "count": int(cnt)})
-
-    # Employee breakdown (best-effort)
-    # If estimate_employees ties estimate -> employee, use it.
-    if not df_estimate_emps.empty:
-        for col in ["estimate_id", "employee_id", "first_name", "last_name"]:
-            if col not in df_estimate_emps.columns:
-                df_estimate_emps[col] = None
-
-        ee = df_estimate_emps[df_estimate_emps["estimate_id"].isin(df_estimates["estimate_id"])].copy()
-        if not ee.empty:
-            emp_counts = ee.groupby(["employee_id", "first_name", "last_name"]).size().reset_index(name="created")
-            for _, r in emp_counts.iterrows():
-                name = f"{str(r.get('first_name','') or '').strip()} {str(r.get('last_name','') or '').strip()}".strip()
-                lead_turnover["employee_breakdown"].append(
-                    {"employee_id": r.get("employee_id", ""), "employee_name": name or "Unknown", "estimates_created": int(r["created"])}
+    df_ls = df_est_ytd.copy()
+    df_ls["lead_source_norm"] = df_ls["lead_source"].fillna("").astype(str).str.strip()
+    if not df_ls.empty:
+        lsb = (
+            df_ls.groupby("lead_source_norm")
+            .agg(
+                estimates=("estimate_id", "nunique"),
+                won=("outcome", lambda s: int((s == "won").sum())),
+                lost=("outcome", lambda s: int((s == "lost").sum())),
+                pending=("outcome", lambda s: int((s == "pending").sum())),
+            )
+            .reset_index()
+            .sort_values("estimates", ascending=False)
+        )
+        lead_turnover["lead_source_breakdown"] = [
+            {
+                "lead_source": str(r["lead_source_norm"]) or "Unknown",
+                "estimates": int(r["estimates"]),
+                "won": int(r["won"]),
+                "lost": int(r["lost"]),
+                "pending": int(r["pending"]),
+                "win_rate": round(
+                    (int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1
                 )
+                if (int(r["won"]) + int(r["lost"])) > 0
+                else 0.0,
+            }
+            for _, r in lsb.iterrows()
+        ]
+
+    # Employee breakdown (best-effort via estimate_employees -> employee_id)
+    emp_breakdown = []
+    if not df_estimate_emps.empty:
+        ee = df_estimate_emps.copy()
+        ee = _ensure_columns(
+            ee,
+            {
+                "estimate_id": "object",
+                "employee_id": "object",
+                "first_name": "object",
+                "last_name": "object",
+            },
+        )
+
+        # Normalize join keys
+        ee["employee_id"] = ee["employee_id"].astype(str)
+
+        if not df_emp_dim.empty:
+            df_emp_dim["employee_id"] = df_emp_dim["employee_id"].astype(str)
+
+        # Prefer name from estimate_employees, then fall back to employee dimension name
+        ee["employee_name_from_est"] = (
+            ee["first_name"].fillna("").astype(str).str.strip()
+            + " "
+            + ee["last_name"].fillna("").astype(str).str.strip()
+        ).str.strip()
+
+        if not df_emp_dim.empty and "employee_name" in df_emp_dim.columns:
+            ee = ee.merge(
+                df_emp_dim[["employee_id", "employee_name"]],
+                how="left",
+                on="employee_id",
+            )
+        else:
+            ee["employee_name"] = ""
+
+        ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
+        ee.loc[ee["employee_name"] == "", "employee_name"] = ee.loc[
+            ee["employee_name"] == "", "employee_name_from_est"
+        ]
+        ee["employee_name"] = ee["employee_name"].fillna("").astype(str).str.strip()
+
+        _missing_name = ee["employee_name"].eq("") | ee["employee_name"].isna()
+        ee.loc[_missing_name, "employee_name"] = "Unassigned"
+
+        looks_like_id = ee["employee_name"].astype(str).str.match(r"^pro_[0-9a-f]{32}$", na=False)
+        ee.loc[looks_like_id, "employee_name"] = "Unassigned"
+
+        # Limit to YTD estimates only
+        ee["estimate_id"] = ee["estimate_id"].astype(str)
+        ytd_ids = set(df_est_ytd["estimate_id"].astype(str).tolist())
+        ee = ee[ee["estimate_id"].isin(ytd_ids)].copy()
+
+        # Attach outcome for rollups
+        ee = ee.merge(
+            df_est_ytd[["estimate_id", "outcome"]],
+            how="left",
+            on="estimate_id",
+        )
+
+        eb = (
+            ee.groupby("employee_name")
+            .agg(
+                estimates=("estimate_id", "nunique"),
+                won=("outcome", lambda s: int((s == "won").sum())),
+                lost=("outcome", lambda s: int((s == "lost").sum())),
+                pending=("outcome", lambda s: int((s == "pending").sum())),
+            )
+            .reset_index()
+            .sort_values("estimates", ascending=False)
+        )
+
+        emp_breakdown = [
+            {
+                "employee_name": str(r["employee_name"]) or "Unknown",
+                "estimates": int(r["estimates"]),
+                "won": int(r["won"]),
+                "lost": int(r["lost"]),
+                "pending": int(r.get("pending", 0)),
+                "win_rate": round(
+                    (int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0),
+                    1,
+                )
+                if (int(r["won"]) + int(r["lost"])) > 0
+                else 0.0,
+            }
+            for _, r in eb.iterrows()
+        ]
+
+    lead_turnover["employee_breakdown"] = emp_breakdown
 
     return lead_turnover
