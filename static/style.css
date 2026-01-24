@@ -1379,6 +1379,14 @@ footer {
     grid-column: 1 / -1;
 }
 
+.jc-dash .jc-kpi-full {
+    width: 100%;
+    max-width: 1300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+
 .jc-dash .jc-kpi-header {
     display: flex;
     align-items: flex-start;
