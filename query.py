@@ -1,11 +1,69 @@
-# query_service_efficiency_audit.py
+# query_club_agreement_audit.py
+"""
+Audit + validation for the next KPI:
+  Club Agreement Conversion Rate (Wizard Club / Membership)
+
+Goal:
+  View all data that would be included in the KPI and verify:
+    - which tags exist and how they are formatted
+    - whether "club" can be reliably identified via tags
+    - service vs install classification (so we don't count installs as "service calls")
+    - YTD coverage + sample rows you can eyeball
+
+How this script works:
+  1) Prints table presence, schemas, and row counts
+  2) Profiles jobs.tags (raw + normalized) and finds candidate "club" tags
+  3) Creates an "eligible service-call population" from completed jobs YTD
+  4) Shows conversion breakdown by tag, by month, and sample job rows
+  5) Helps you tune the "club tag keywords" list safely
+
+Run:
+  python query_club_agreement_audit.py
+"""
+
 import os
+import re
 from pathlib import Path
 import duckdb
 import pandas as pd
 
 DB_FILE = Path(os.environ.get("PERSIST_DIR", ".")) / "housecall_data.duckdb"
 
+# -----------------------------
+# Config you will tune
+# -----------------------------
+# Candidate keywords to detect club/membership tags in jobs.tags.
+# Add/remove based on your actual tags.
+CLUB_TAG_KEYWORDS = [
+    "wizard",
+    "club",
+    "membership",
+    "member",
+    "maintenance plan",
+    "service plan",
+    "agreement",
+]
+
+# How to exclude installs/change-outs from the "service call" population.
+# This mirrors your current approach of classifying installs via tags.
+INSTALL_EXCLUDE_KEYWORDS = [
+    "install",
+    "changeout",
+    "change-out",
+    "replacement",
+    "new system",
+]
+
+# Completed job statuses in your system
+COMPLETED_STATUSES = {"complete rated", "complete unrated"}
+
+# Max rows to print in sample outputs
+DEFAULT_MAX_ROWS = 80
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
 def table_exists(conn, table: str) -> bool:
     try:
         conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
@@ -13,11 +71,13 @@ def table_exists(conn, table: str) -> bool:
     except Exception:
         return False
 
+
 def describe(conn, table: str) -> pd.DataFrame:
     try:
         return conn.execute(f"DESCRIBE {table}").df()
     except Exception as e:
         return pd.DataFrame({"error": [str(e)]})
+
 
 def q(conn, sql: str, params=None) -> pd.DataFrame:
     try:
@@ -27,7 +87,8 @@ def q(conn, sql: str, params=None) -> pd.DataFrame:
     except Exception as e:
         return pd.DataFrame({"error": [str(e)], "sql": [sql[:800]]})
 
-def print_df(title: str, df: pd.DataFrame, max_rows: int = 50):
+
+def print_df(title: str, df: pd.DataFrame, max_rows: int = DEFAULT_MAX_ROWS):
     print(f"\n=== {title} ===")
     if df is None:
         print("(None)")
@@ -35,39 +96,60 @@ def print_df(title: str, df: pd.DataFrame, max_rows: int = 50):
     with pd.option_context(
         "display.max_rows", max_rows,
         "display.max_columns", 200,
-        "display.width", 200
+        "display.width", 220,
+        "display.max_colwidth", 120,
     ):
         print(df)
 
-def column_list(conn, table: str) -> list[str]:
-    try:
-        return conn.execute(f"DESCRIBE {table}").df()["column_name"].tolist()
-    except Exception:
-        return []
-
-def has_cols(conn, table: str, cols: list[str]) -> dict[str, bool]:
-    existing = set([c.lower() for c in column_list(conn, table)])
-    return {c: (c.lower() in existing) for c in cols}
 
 def safe_cast_ts_expr(col: str) -> str:
     return f"try_cast({col} AS TIMESTAMP)"
 
+
+def normalize_tags_py(tags: str | None) -> str:
+    """
+    Normalize tags similarly to your KPI approach:
+      - lower
+      - split on commas
+      - trim whitespace
+      - re-join with '|'
+    """
+    if tags is None:
+        return ""
+    s = str(tags).strip().lower()
+    if not s:
+        return ""
+    parts = [p.strip() for p in s.split(",") if p and p.strip()]
+    # de-dup while keeping order
+    seen = set()
+    out = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return "|".join(out)
+
+
+def contains_any_keyword(tag_norm: str, keywords: list[str]) -> bool:
+    if not tag_norm:
+        return False
+    for kw in keywords:
+        kw_norm = kw.strip().lower()
+        if kw_norm and kw_norm in tag_norm:
+            return True
+    return False
+
+
 def main():
     conn = duckdb.connect(DB_FILE, read_only=True)
 
-    print("\nSERVICE EFFICIENCY DATA AUDIT")
+    print("\nCLUB AGREEMENT KPI DATA AUDIT")
     print(f"DB: {DB_FILE}")
 
-    required_tables = [
-        "jobs",
-        "job_employees",
-        "job_appointments",
-        "employees",
-        "invoices",
-        "invoice_items",
-        "pricebook_services",
-    ]
-
+    # -----------------------------
+    # 1) Tables + schemas
+    # -----------------------------
+    required_tables = ["jobs", "customers"]
     print("\nTABLE PRESENCE + SCHEMAS")
     for t in required_tables:
         exists = table_exists(conn, t)
@@ -75,417 +157,222 @@ def main():
         if exists:
             print(describe(conn, t))
 
+    if not table_exists(conn, "jobs"):
+        print("\nERROR: jobs table is missing. Cannot continue.")
+        conn.close()
+        return
+
     print("\nROW COUNTS")
     for t in required_tables:
         if table_exists(conn, t):
             print_df(f"count({t})", q(conn, f"SELECT COUNT(*) AS n FROM {t}"))
 
-    print("\nKEY UNIQUENESS / DUPLICATION RISK")
+    # -----------------------------
+    # 2) Pull jobs into pandas (we want robust tag parsing + keyword checks)
+    # -----------------------------
+    df_jobs = q(conn, """
+        SELECT
+            job_id,
+            customer_id,
+            work_status,
+            description,
+            tags,
+            created_at,
+            updated_at,
+            completed_at
+        FROM jobs
+    """)
 
-    if table_exists(conn, "employees"):
-        print_df("employees key health", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              COUNT(DISTINCT employee_id) AS distinct_employee_id,
-              SUM(CASE WHEN employee_id IS NULL OR trim(employee_id) = '' THEN 1 ELSE 0 END) AS null_employee_id
-            FROM employees
-        """))
+    if "error" in df_jobs.columns:
+        print_df("jobs query failed", df_jobs)
+        conn.close()
+        return
 
-    if table_exists(conn, "jobs"):
-        print_df("jobs key health", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              COUNT(DISTINCT job_id) AS distinct_job_id,
-              SUM(CASE WHEN job_id IS NULL OR trim(job_id) = '' THEN 1 ELSE 0 END) AS null_job_id
-            FROM jobs
-        """))
+    # Normalize statuses
+    df_jobs["work_status_norm"] = df_jobs["work_status"].fillna("").astype(str).str.strip().str.lower()
 
-    if table_exists(conn, "invoices"):
-        print_df("invoices key health", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              COUNT(DISTINCT invoice_id) AS distinct_invoice_id,
-              SUM(CASE WHEN invoice_id IS NULL OR trim(invoice_id) = '' THEN 1 ELSE 0 END) AS null_invoice_id,
-              COUNT(DISTINCT job_id) AS distinct_job_id_in_invoices,
-              SUM(CASE WHEN job_id IS NULL OR trim(job_id) = '' THEN 1 ELSE 0 END) AS null_job_id_in_invoices
-            FROM invoices
-        """))
+    # Normalize tags
+    df_jobs["tags_raw"] = df_jobs["tags"]
+    df_jobs["tags_norm"] = df_jobs["tags_raw"].apply(normalize_tags_py)
 
-    if table_exists(conn, "invoice_items"):
-        print_df("invoice_items key health", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              COUNT(DISTINCT invoice_id) AS distinct_invoice_id,
-              COUNT(DISTINCT job_id) AS distinct_job_id,
-              COUNT(DISTINCT item_id) AS distinct_item_id,
-              SUM(CASE WHEN invoice_id IS NULL OR trim(invoice_id) = '' THEN 1 ELSE 0 END) AS null_invoice_id,
-              SUM(CASE WHEN item_id IS NULL OR trim(item_id) = '' THEN 1 ELSE 0 END) AS null_item_id
-            FROM invoice_items
-        """))
+    # Parse datetimes
+    for c in ["created_at", "updated_at", "completed_at"]:
+        df_jobs[c + "_dt"] = pd.to_datetime(df_jobs[c], errors="coerce", utc=True)
 
-    if table_exists(conn, "job_appointments"):
-        print_df("job_appointments key health", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              COUNT(DISTINCT job_id) AS distinct_job_id,
-              COUNT(DISTINCT appointment_id) AS distinct_appointment_id,
-              COUNT(DISTINCT job_id || '|' || appointment_id || '|' || coalesce(dispatched_employee_id,'')) AS distinct_triplet,
-              SUM(CASE WHEN appointment_id IS NULL OR trim(appointment_id) = '' THEN 1 ELSE 0 END) AS null_appointment_id,
-              SUM(CASE WHEN job_id IS NULL OR trim(job_id) = '' THEN 1 ELSE 0 END) AS null_job_id,
-              SUM(CASE WHEN dispatched_employee_id IS NULL OR trim(dispatched_employee_id) = '' THEN 1 ELSE 0 END) AS null_dispatched_employee_id
-            FROM job_appointments
-        """))
+    # YTD start in DuckDB (we’ll compute in python for filtering)
+    ytd_start = pd.Timestamp.utcnow().tz_convert("UTC").replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    print("\nDATE COVERAGE (YTD + ALL TIME)")
-    ytd_start = "DATE_TRUNC('year', CURRENT_DATE)"
+    # Completed jobs YTD = your existing KPI population style
+    df_completed_ytd = df_jobs[
+        df_jobs["work_status_norm"].isin(COMPLETED_STATUSES)
+        & (df_jobs["completed_at_dt"].notna())
+        & (df_jobs["completed_at_dt"] >= ytd_start)
+    ].copy()
 
-    if table_exists(conn, "invoices"):
-        print_df("invoices columns present", pd.DataFrame([has_cols(conn, "invoices", ["invoice_date", "service_date", "paid_at", "status"])]))
+    # -----------------------------
+    # 3) Tags profiling (raw + normalized)
+    # -----------------------------
+    print("\nTAGS PROFILING (ALL TIME)")
+    print_df("jobs with NULL/empty tags", pd.DataFrame([{
+        "jobs_total": int(len(df_jobs)),
+        "null_tags": int(df_jobs["tags_raw"].isna().sum()),
+        "empty_tags": int((df_jobs["tags_raw"].fillna("").astype(str).str.strip() == "").sum()),
+    }]))
 
-        print_df("invoices invoice_date coverage (all-time)", q(conn, f"""
-            WITH base AS (
-              SELECT
-                {safe_cast_ts_expr("invoice_date")} AS invoice_dt
-              FROM invoices
-            )
-            SELECT
-              COUNT(*) AS rows,
-              SUM(CASE WHEN invoice_dt IS NULL THEN 1 ELSE 0 END) AS null_invoice_date,
-              MIN(invoice_dt) AS min_invoice_dt,
-              MAX(invoice_dt) AS max_invoice_dt
-            FROM base
-        """))
+    # Distinct raw tags values (will be noisy because it's comma strings)
+    # Show the most common tag-strings to spot formatting issues.
+    tag_string_counts = (
+        df_jobs["tags_raw"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .value_counts()
+        .head(50)
+        .reset_index()
+        .rename(columns={"index": "tags_raw_string", "count": "cnt"})
+    )
+    print_df("top 50 raw tag strings (exact)", tag_string_counts, max_rows=60)
 
-        print_df("invoice statuses (all-time)", q(conn, f"""
-            SELECT
-              lower(trim(status)) AS status,
-              COUNT(*) AS cnt,
-              MIN({safe_cast_ts_expr("invoice_date")}) AS min_dt,
-              MAX({safe_cast_ts_expr("invoice_date")}) AS max_dt
-            FROM invoices
-            GROUP BY 1
-            ORDER BY cnt DESC
-        """))
+    # Explode normalized tags into individual tags for clean frequency counts
+    exploded = (
+        df_jobs[["job_id", "tags_norm"]]
+        .assign(tag=df_jobs["tags_norm"].fillna("").astype(str).str.split(r"\|"))
+        .explode("tag")
+    )
+    exploded["tag"] = exploded["tag"].fillna("").astype(str).str.strip()
+    exploded = exploded[exploded["tag"] != ""].copy()
 
-    if table_exists(conn, "job_appointments"):
-        print_df("job_appointments columns present", pd.DataFrame([has_cols(conn, "job_appointments", ["start_time", "end_time", "appointment_id", "dispatched_employee_id"])]))
+    tag_freq = (
+        exploded.groupby("tag")["job_id"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"job_id": "jobs_with_tag"})
+        .sort_values("jobs_with_tag", ascending=False)
+        .head(200)
+        .reset_index(drop=True)
+    )
+    print_df("top 200 individual tags (by jobs tagged)", tag_freq, max_rows=200)
 
-        print_df("appointments start/end coverage (YTD)", q(conn, f"""
-            WITH base AS (
-              SELECT
-                {safe_cast_ts_expr("start_time")} AS start_dt,
-                {safe_cast_ts_expr("end_time")} AS end_dt
-              FROM job_appointments
-              WHERE {safe_cast_ts_expr("start_time")} >= {ytd_start}
-            )
-            SELECT
-              COUNT(*) AS rows_ytd,
-              SUM(CASE WHEN start_dt IS NULL THEN 1 ELSE 0 END) AS null_start_ytd,
-              SUM(CASE WHEN end_dt IS NULL THEN 1 ELSE 0 END) AS null_end_ytd,
-              MIN(start_dt) AS min_start_ytd,
-              MAX(start_dt) AS max_start_ytd
-            FROM base
-        """))
+    # Identify candidate club tags using your keyword list
+    club_kw = [k.strip().lower() for k in CLUB_TAG_KEYWORDS if k.strip()]
+    tag_freq["is_club_candidate"] = tag_freq["tag"].apply(lambda t: any(kw in t for kw in club_kw))
+    club_tag_candidates = tag_freq[tag_freq["is_club_candidate"]].copy()
+    print_df("candidate club tags (keyword match)", club_tag_candidates, max_rows=200)
 
-        print_df("appointment duration quality (YTD)", q(conn, f"""
-            WITH base AS (
-              SELECT
-                {safe_cast_ts_expr("start_time")} AS start_dt,
-                {safe_cast_ts_expr("end_time")} AS end_dt
-              FROM job_appointments
-              WHERE {safe_cast_ts_expr("start_time")} >= {ytd_start}
-            ),
-            dur AS (
-              SELECT DATE_DIFF('minute', start_dt, end_dt) AS minutes
-              FROM base
-              WHERE start_dt IS NOT NULL AND end_dt IS NOT NULL
-            )
-            SELECT
-              COUNT(*) AS n,
-              SUM(CASE WHEN minutes < 0 THEN 1 ELSE 0 END) AS negative_minutes,
-              SUM(CASE WHEN minutes = 0 THEN 1 ELSE 0 END) AS zero_minutes,
-              SUM(CASE WHEN minutes > 12*60 THEN 1 ELSE 0 END) AS over_12_hours,
-              MIN(minutes) AS min_minutes,
-              APPROX_QUANTILE(minutes, 0.50) AS p50_minutes,
-              APPROX_QUANTILE(minutes, 0.90) AS p90_minutes,
-              MAX(minutes) AS max_minutes
-            FROM dur
-        """))
+    # -----------------------------
+    # 4) Define the KPI population
+    #    Eligible service calls = completed jobs YTD excluding install/change-out keywords
+    # -----------------------------
+    df_completed_ytd["is_install_like"] = df_completed_ytd["tags_norm"].apply(
+        lambda s: contains_any_keyword(s, INSTALL_EXCLUDE_KEYWORDS)
+    )
+    df_completed_ytd["is_service_call"] = ~df_completed_ytd["is_install_like"]
 
-    print("\nJOIN COVERAGE TESTS")
+    # Club membership flag (by keywords in normalized tags)
+    df_completed_ytd["is_club"] = df_completed_ytd["tags_norm"].apply(
+        lambda s: contains_any_keyword(s, CLUB_TAG_KEYWORDS)
+    )
 
-    if table_exists(conn, "invoices") and table_exists(conn, "jobs"):
-        print_df("invoice.job_id -> jobs.job_id coverage (YTD)", q(conn, f"""
-            WITH inv AS (
-              SELECT invoice_id, job_id, {safe_cast_ts_expr("invoice_date")} AS invoice_dt
-              FROM invoices
-              WHERE {safe_cast_ts_expr("invoice_date")} >= {ytd_start}
-            ),
-            j AS (SELECT job_id FROM jobs)
-            SELECT
-              COUNT(*) AS inv_rows_ytd,
-              SUM(CASE WHEN inv.job_id IS NULL OR trim(inv.job_id) = '' THEN 1 ELSE 0 END) AS inv_null_job_id,
-              SUM(CASE WHEN j.job_id IS NOT NULL THEN 1 ELSE 0 END) AS matched_jobs,
-              SUM(CASE WHEN j.job_id IS NULL THEN 1 ELSE 0 END) AS unmatched_jobs
-            FROM inv
-            LEFT JOIN j ON inv.job_id = j.job_id
-        """))
+    # Build KPI base
+    df_kpi_base = df_completed_ytd[df_completed_ytd["is_service_call"]].copy()
 
-    if table_exists(conn, "job_appointments") and table_exists(conn, "employees"):
-        print_df("job_appointments.dispatched_employee_id -> employees.employee_id coverage (YTD)", q(conn, f"""
-            WITH ap AS (
-              SELECT dispatched_employee_id AS emp_id
-              FROM job_appointments
-              WHERE {safe_cast_ts_expr("start_time")} >= {ytd_start}
-                AND dispatched_employee_id IS NOT NULL
-                AND trim(dispatched_employee_id) <> ''
-            ),
-            e AS (SELECT employee_id FROM employees)
-            SELECT
-              COUNT(*) AS appt_rows_ytd,
-              COUNT(DISTINCT ap.emp_id) AS distinct_dispatched_emp_ids_ytd,
-              SUM(CASE WHEN e.employee_id IS NOT NULL THEN 1 ELSE 0 END) AS matched_rows,
-              SUM(CASE WHEN e.employee_id IS NULL THEN 1 ELSE 0 END) AS unmatched_rows
-            FROM ap
-            LEFT JOIN e ON ap.emp_id = e.employee_id
-        """))
+    total_service_calls = int(len(df_kpi_base))
+    club_service_calls = int(df_kpi_base["is_club"].sum())
+    nonclub_service_calls = total_service_calls - club_service_calls
+    conversion_pct = (club_service_calls / total_service_calls * 100.0) if total_service_calls else 0.0
 
-    print("\nINVOICE ITEMS SHAPE (BILLED SIDE PROXIES)")
+    print("\nKPI POPULATION SUMMARY (COMPLETED JOBS YTD, SERVICE ONLY)")
+    print_df("club conversion summary", pd.DataFrame([{
+        "ytd_start_utc": str(ytd_start),
+        "completed_jobs_ytd_total": int(len(df_completed_ytd)),
+        "eligible_service_calls_ytd": total_service_calls,
+        "club_service_calls_ytd": club_service_calls,
+        "nonclub_service_calls_ytd": nonclub_service_calls,
+        "club_conversion_pct": round(conversion_pct, 2),
+        "club_tag_keywords": ", ".join(CLUB_TAG_KEYWORDS),
+        "install_exclude_keywords": ", ".join(INSTALL_EXCLUDE_KEYWORDS),
+    }]))
 
-    if table_exists(conn, "invoice_items") and table_exists(conn, "invoices"):
-        print_df("invoice_items types (YTD)", q(conn, f"""
-            SELECT
-              lower(trim(it.type)) AS type,
-              COUNT(*) AS cnt
-            FROM invoice_items it
-            JOIN invoices inv ON it.invoice_id = inv.invoice_id
-            WHERE {safe_cast_ts_expr("inv.invoice_date")} >= {ytd_start}
-            GROUP BY 1
-            ORDER BY cnt DESC
-        """))
+    # -----------------------------
+    # 5) Breakdown views to validate behavior
+    # -----------------------------
+    # 5a) Show top tags among club vs non-club service calls (to validate logic)
+    print("\nTAG BREAKDOWN (SERVICE CALLS YTD): CLUB vs NON-CLUB")
+    df_tags_service = df_kpi_base[["job_id", "is_club", "tags_norm"]].copy()
+    df_tags_service = df_tags_service.assign(tag=df_tags_service["tags_norm"].fillna("").astype(str).str.split(r"\|")).explode("tag")
+    df_tags_service["tag"] = df_tags_service["tag"].fillna("").astype(str).str.strip()
+    df_tags_service = df_tags_service[df_tags_service["tag"] != ""]
 
-        # Fix ambiguous amount: use it.amount
-        print_df("invoice_items null rates (YTD)", q(conn, f"""
-            SELECT
-              COUNT(*) AS rows,
-              SUM(CASE WHEN it.qty_in_hundredths IS NULL THEN 1 ELSE 0 END) AS null_qty,
-              SUM(CASE WHEN it.unit_cost IS NULL THEN 1 ELSE 0 END) AS null_unit_cost,
-              SUM(CASE WHEN it.unit_price IS NULL THEN 1 ELSE 0 END) AS null_unit_price,
-              SUM(CASE WHEN it.amount IS NULL THEN 1 ELSE 0 END) AS null_amount
-            FROM invoice_items it
-            JOIN invoices inv ON it.invoice_id = inv.invoice_id
-            WHERE {safe_cast_ts_expr("inv.invoice_date")} >= {ytd_start}
-        """))
+    tag_break = (
+        df_tags_service.groupby(["is_club", "tag"])["job_id"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"job_id": "jobs"})
+        .sort_values(["is_club", "jobs"], ascending=[False, False])
+    )
 
-        # New: billed hours candidate from qty_in_hundredths on labor lines
-        print_df("labor qty_in_hundredths coverage + implied hours (YTD)", q(conn, f"""
-            WITH base AS (
-              SELECT
-                it.qty_in_hundredths,
-                (it.qty_in_hundredths / 100.0) AS qty_hours
-              FROM invoice_items it
-              JOIN invoices inv ON it.invoice_id = inv.invoice_id
-              WHERE {safe_cast_ts_expr("inv.invoice_date")} >= {ytd_start}
-                AND lower(trim(it.type)) = 'labor'
-            )
-            SELECT
-              COUNT(*) AS labor_rows,
-              SUM(CASE WHEN qty_in_hundredths IS NULL THEN 1 ELSE 0 END) AS null_qty,
-              SUM(CASE WHEN qty_in_hundredths IS NOT NULL AND qty_in_hundredths <= 0 THEN 1 ELSE 0 END) AS nonpositive_qty,
-              MIN(qty_hours) AS min_hours,
-              APPROX_QUANTILE(qty_hours, 0.50) AS p50_hours,
-              APPROX_QUANTILE(qty_hours, 0.90) AS p90_hours,
-              MAX(qty_hours) AS max_hours
-            FROM base
-        """))
+    print_df("top 60 tags among CLUB service calls (YTD)", tag_break[tag_break["is_club"] == True].head(60), max_rows=60)
+    print_df("top 60 tags among NON-CLUB service calls (YTD)", tag_break[tag_break["is_club"] == False].head(60), max_rows=60)
 
-        # New: are labor rows “per-visit” with qty missing? show top labor names with qty stats
-        print_df("labor item names with qty stats (YTD)", q(conn, f"""
-            SELECT
-              it.name,
-              COUNT(*) AS cnt,
-              SUM(CASE WHEN it.qty_in_hundredths IS NULL THEN 1 ELSE 0 END) AS null_qty_cnt,
-              APPROX_QUANTILE(it.qty_in_hundredths / 100.0, 0.50) AS p50_hours_if_present
-            FROM invoice_items it
-            JOIN invoices inv ON it.invoice_id = inv.invoice_id
-            WHERE {safe_cast_ts_expr("inv.invoice_date")} >= {ytd_start}
-              AND lower(trim(it.type)) = 'labor'
-            GROUP BY 1
-            ORDER BY cnt DESC
-            LIMIT 50
-        """))
+    # 5b) Month breakdown (service calls YTD)
+    df_kpi_base["month"] = df_kpi_base["completed_at_dt"].dt.to_period("M").astype(str)
+    month_break = (
+        df_kpi_base.groupby("month")
+        .agg(
+            service_calls=("job_id", "count"),
+            club_calls=("is_club", "sum"),
+        )
+        .reset_index()
+        .sort_values("month")
+    )
+    month_break["club_conversion_pct"] = month_break.apply(
+        lambda r: round((r["club_calls"] / r["service_calls"] * 100.0), 2) if r["service_calls"] else 0.0,
+        axis=1
+    )
+    print_df("monthly club conversion (service calls only, YTD)", month_break, max_rows=200)
 
-    print("\nPRICEBOOK SERVICES COVERAGE")
+    # 5c) Sample rows (club + non-club) to eyeball tags/descriptions
+    print("\nSAMPLE JOBS INCLUDED IN KPI (SERVICE CALLS YTD)")
+    cols = ["job_id", "work_status", "completed_at", "description", "tags_raw", "tags_norm", "is_club", "is_install_like"]
+    sample_club = df_kpi_base[df_kpi_base["is_club"] == True].sort_values("completed_at_dt", ascending=False).head(50)[cols]
+    sample_nonclub = df_kpi_base[df_kpi_base["is_club"] == False].sort_values("completed_at_dt", ascending=False).head(50)[cols]
 
-    if table_exists(conn, "pricebook_services"):
-        print_df("pricebook_services completeness + duration stats", q(conn, """
-            SELECT
-              COUNT(*) AS rows,
-              SUM(CASE WHEN duration IS NULL THEN 1 ELSE 0 END) AS null_duration,
-              SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS null_cost,
-              SUM(CASE WHEN price IS NULL THEN 1 ELSE 0 END) AS null_price,
-              MIN(duration) AS min_duration,
-              APPROX_QUANTILE(duration, 0.50) AS p50_duration,
-              APPROX_QUANTILE(duration, 0.90) AS p90_duration,
-              MAX(duration) AS max_duration
-            FROM pricebook_services
-        """))
+    print_df("sample CLUB service calls (latest 50)", sample_club, max_rows=60)
+    print_df("sample NON-CLUB service calls (latest 50)", sample_nonclub, max_rows=60)
 
-        print_df("pricebook_services sample (latest updated)", q(conn, """
-            SELECT name, duration, cost, price, updated_at
-            FROM pricebook_services
-            ORDER BY try_cast(updated_at AS TIMESTAMP) DESC
-            LIMIT 25
-        """))
+    # 5d) Surface possible false positives: club keyword match but tag list looks suspicious
+    # Example: "club" contained in unrelated word. Rare, but this helps catch it.
+    print("\nFALSE POSITIVE CHECKS")
+    suspicious = df_kpi_base[df_kpi_base["is_club"] == True].copy()
+    # highlight which keywords matched
+    def matched_keywords(tag_norm: str) -> str:
+        hits = []
+        t = (tag_norm or "").lower()
+        for kw in club_kw:
+            if kw and kw in t:
+                hits.append(kw)
+        return ", ".join(hits)
 
-        # New: can we map invoice labor item names to pricebook service names?
-        # This is a fuzzy “contains” check. It will be slow if pricebook is huge.
-        # We cap invoice labor names to top 50 (YTD) so it's manageable.
-        if table_exists(conn, "invoice_items") and table_exists(conn, "invoices"):
-            print_df("invoice labor name -> pricebook name mapping (top 50 labor names, YTD)", q(conn, f"""
-                WITH top_labor AS (
-                  SELECT
-                    lower(trim(it.name)) AS labor_name,
-                    COUNT(*) AS cnt
-                  FROM invoice_items it
-                  JOIN invoices inv ON it.invoice_id = inv.invoice_id
-                  WHERE {safe_cast_ts_expr("inv.invoice_date")} >= {ytd_start}
-                    AND lower(trim(it.type)) = 'labor'
-                    AND it.name IS NOT NULL
-                    AND trim(it.name) <> ''
-                  GROUP BY 1
-                  ORDER BY cnt DESC
-                  LIMIT 50
-                )
-                SELECT
-                  tl.labor_name,
-                  tl.cnt,
-                  COUNT(*) FILTER (WHERE pb.service_uuid IS NOT NULL) AS matched_services
-                FROM top_labor tl
-                LEFT JOIN pricebook_services pb
-                  ON lower(pb.name) LIKE '%' || tl.labor_name || '%'
-                  OR tl.labor_name LIKE '%' || lower(pb.name) || '%'
-                GROUP BY 1,2
-                ORDER BY matched_services DESC, cnt DESC
-            """), max_rows=200)
+    suspicious["club_kw_hits"] = suspicious["tags_norm"].apply(matched_keywords)
+    suspicious_view = suspicious.sort_values("completed_at_dt", ascending=False).head(80)[
+        ["job_id", "completed_at", "description", "tags_norm", "club_kw_hits"]
+    ]
+    print_df("club-flagged jobs with keyword hits (latest 80)", suspicious_view, max_rows=100)
 
-    print("\nINVOICE-LEVEL RECONCILIATION: billed hours vs paid hours (YTD)")
-
-    # New: This is the most important KPI feasibility check.
-    # It creates a single view per invoice/job:
-    # - billed_hours_from_qty: sum(qty_in_hundredths)/100 for labor items
-    # - paid_hours_from_appts: sum(appointment minutes)/60
-    if table_exists(conn, "invoices") and table_exists(conn, "invoice_items") and table_exists(conn, "job_appointments"):
-        recon = q(conn, f"""
-            WITH inv AS (
-              SELECT
-                invoice_id,
-                job_id,
-                lower(trim(status)) AS status,
-                {safe_cast_ts_expr("invoice_date")} AS invoice_dt
-              FROM invoices
-              WHERE {safe_cast_ts_expr("invoice_date")} >= {ytd_start}
-                AND lower(trim(status)) IN ('paid','open')
-                AND job_id IS NOT NULL
-                AND trim(job_id) <> ''
-            ),
-            billed AS (
-              SELECT
-                it.invoice_id,
-                SUM(CASE
-                      WHEN lower(trim(it.type)) = 'labor' AND it.qty_in_hundredths IS NOT NULL
-                      THEN it.qty_in_hundredths
-                      ELSE 0
-                    END) / 100.0 AS billed_hours_from_qty,
-                COUNT(*) FILTER (WHERE lower(trim(it.type))='labor') AS labor_line_cnt,
-                SUM(CASE WHEN lower(trim(it.type))='labor' AND it.qty_in_hundredths IS NULL THEN 1 ELSE 0 END) AS labor_lines_missing_qty
-              FROM invoice_items it
-              GROUP BY 1
-            ),
-            paid AS (
-              SELECT
-                job_id,
-                SUM(
-                  CASE
-                    WHEN {safe_cast_ts_expr("start_time")} IS NOT NULL AND {safe_cast_ts_expr("end_time")} IS NOT NULL
-                    THEN DATE_DIFF('minute', {safe_cast_ts_expr("start_time")}, {safe_cast_ts_expr("end_time")})
-                    ELSE 0
-                  END
-                ) / 60.0 AS paid_hours_from_appts,
-                COUNT(*) AS appt_rows
-              FROM job_appointments
-              WHERE {safe_cast_ts_expr("start_time")} >= {ytd_start}
-              GROUP BY 1
-            )
-            SELECT
-              inv.invoice_id,
-              inv.job_id,
-              inv.status,
-              inv.invoice_dt,
-              billed.billed_hours_from_qty,
-              billed.labor_line_cnt,
-              billed.labor_lines_missing_qty,
-              paid.paid_hours_from_appts,
-              paid.appt_rows,
-              CASE
-                WHEN paid.paid_hours_from_appts IS NULL OR paid.paid_hours_from_appts = 0 THEN NULL
-                ELSE billed.billed_hours_from_qty / paid.paid_hours_from_appts
-              END AS billed_to_paid_ratio
-            FROM inv
-            LEFT JOIN billed ON inv.invoice_id = billed.invoice_id
-            LEFT JOIN paid ON inv.job_id = paid.job_id
-            ORDER BY inv.invoice_dt DESC
-            LIMIT 200
-        """)
-        print_df("invoice/job billed vs paid reconciliation sample (YTD)", recon, max_rows=200)
-
-        print_df("reconciliation summary stats (YTD)", q(conn, f"""
-            WITH recon AS (
-              WITH inv AS (
-                SELECT invoice_id, job_id
-                FROM invoices
-                WHERE {safe_cast_ts_expr("invoice_date")} >= {ytd_start}
-                  AND lower(trim(status)) IN ('paid','open')
-                  AND job_id IS NOT NULL
-                  AND trim(job_id) <> ''
-              ),
-              billed AS (
-                SELECT
-                  invoice_id,
-                  SUM(CASE WHEN lower(trim(type))='labor' AND qty_in_hundredths IS NOT NULL THEN qty_in_hundredths ELSE 0 END)/100.0 AS billed_hours
-                FROM invoice_items
-                GROUP BY 1
-              ),
-              paid AS (
-                SELECT
-                  job_id,
-                  SUM(CASE WHEN {safe_cast_ts_expr("start_time")} IS NOT NULL AND {safe_cast_ts_expr("end_time")} IS NOT NULL
-                           THEN DATE_DIFF('minute', {safe_cast_ts_expr("start_time")}, {safe_cast_ts_expr("end_time")})
-                           ELSE 0 END)/60.0 AS paid_hours
-                FROM job_appointments
-                WHERE {safe_cast_ts_expr("start_time")} >= {ytd_start}
-                GROUP BY 1
-              )
-              SELECT
-                inv.invoice_id,
-                inv.job_id,
-                billed.billed_hours,
-                paid.paid_hours
-              FROM inv
-              LEFT JOIN billed ON inv.invoice_id = billed.invoice_id
-              LEFT JOIN paid ON inv.job_id = paid.job_id
-            )
-            SELECT
-              COUNT(*) AS invoices_ytd,
-              SUM(CASE WHEN billed_hours IS NOT NULL AND billed_hours > 0 THEN 1 ELSE 0 END) AS invoices_with_billed_hours,
-              SUM(CASE WHEN paid_hours IS NOT NULL AND paid_hours > 0 THEN 1 ELSE 0 END) AS invoices_with_paid_hours,
-              SUM(CASE WHEN (billed_hours IS NOT NULL AND billed_hours > 0) AND (paid_hours IS NOT NULL AND paid_hours > 0) THEN 1 ELSE 0 END) AS invoices_with_both,
-              APPROX_QUANTILE(billed_hours, 0.50) AS p50_billed_hours,
-              APPROX_QUANTILE(paid_hours, 0.50) AS p50_paid_hours
-            FROM recon
-        """))
+    # 5e) Surface possible false negatives: tags that look like membership but didn't match keywords
+    # This is a heuristic: show top tags containing "plan" or "maint" etc that aren't in keyword list.
+    print("\nFALSE NEGATIVE HINTS (TAGS THAT MAY INDICATE MEMBERSHIP)")
+    maybe_membership = tag_freq.copy()
+    maybe_membership["hint_membership"] = maybe_membership["tag"].apply(
+        lambda t: ("plan" in t) or ("maint" in t) or ("member" in t) or ("club" in t) or ("agreement" in t)
+    )
+    maybe_membership = maybe_membership[maybe_membership["hint_membership"]].copy()
+    maybe_membership["matches_current_keywords"] = maybe_membership["tag"].apply(lambda t: any(kw in t for kw in club_kw))
+    maybe_membership = maybe_membership.sort_values(["matches_current_keywords", "jobs_with_tag"], ascending=[True, False])
+    print_df("membership-ish tags NOT matched by current keywords (review these)", maybe_membership[maybe_membership["matches_current_keywords"] == False].head(120), max_rows=120)
 
     conn.close()
+
 
 if __name__ == "__main__":
     main()
