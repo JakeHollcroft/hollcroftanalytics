@@ -299,6 +299,10 @@
                 <div class="jc-lead-value jc-lead-lost">{{ estimates_lost_ytd }}</div>
             </div>
             <div class="jc-lead-metric">
+                <div class="jc-lead-label">Pending</div>
+                <div class="jc-lead-value jc-lead-pending">{{ estimates_pending_ytd }}</div>
+            </div>
+            <div class="jc-lead-metric">
                 <div class="jc-lead-label">Win rate</div>
                 <div class="jc-lead-value jc-lead-rate">{{ win_rate_ytd }}%</div>
             </div>
@@ -331,6 +335,7 @@
                                     <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
+                                    <th>Pending</th>
                                     <th>Win%</th>
                                 </tr>
                             </thead>
@@ -341,19 +346,19 @@
                                     <td>{{ r.estimates }}</td>
                                     <td>{{ r.won }}</td>
                                     <td>{{ r.lost }}</td>
+                                    <td>{{ r.pending }}</td>
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
                                 {% if (month_breakdown)|length == 0 %}
-                                <tr><td colspan="5" class="jc-lead-empty">No YTD estimate history yet</td></tr>
+                                <tr><td colspan="6" class="jc-lead-empty">No estimate data yet</td></tr>
                                 {% endif %}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <div class="jc-lead-panel">
-                    <div class="jc-lead-panel-title">By employee</div>
+<div class="jc-lead-panel-title">By employee</div>
                     <div class="jc-lead-table-wrap">
                         <table class="jc-lead-table">
                             <thead>
@@ -362,6 +367,7 @@
                                     <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
+                                    <th>Pending</th>
                                     <th>Win%</th>
                                 </tr>
                             </thead>
@@ -372,11 +378,12 @@
                                     <td>{{ r.estimates }}</td>
                                     <td>{{ r.won }}</td>
                                     <td>{{ r.lost }}</td>
+                                    <td>{{ r.pending }}</td>
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
                                 {% if (employee_breakdown)|length == 0 %}
-                                <tr><td colspan="5" class="jc-lead-empty">No estimate assignments yet</td></tr>
+                                <tr><td colspan="6" class="jc-lead-empty">No estimate assignments yet</td></tr>
                                 {% endif %}
                             </tbody>
                         </table>
@@ -393,6 +400,7 @@
                                     <th>Estimates</th>
                                     <th>Won</th>
                                     <th>Lost</th>
+                                    <th>Pending</th>
                                     <th>Win%</th>
                                 </tr>
                             </thead>
@@ -403,11 +411,12 @@
                                     <td>{{ r.estimates }}</td>
                                     <td>{{ r.won }}</td>
                                     <td>{{ r.lost }}</td>
+                                    <td>{{ r.pending }}</td>
                                     <td>{{ r.win_rate }}%</td>
                                 </tr>
                                 {% endfor %}
                                 {% if (lead_source_breakdown)|length == 0 %}
-                                <tr><td colspan="5" class="jc-lead-empty">No lead source data yet</td></tr>
+                                <tr><td colspan="6" class="jc-lead-empty">No lead source data yet</td></tr>
                                 {% endif %}
                             </tbody>
                         </table>

@@ -1016,8 +1016,19 @@ def get_dashboard_kpis():
             a = _norm_str(approval_status_val)
             s = _norm_str(status_val)
 
-            won_keys = {"approved", "accepted", "won", "sold", "selected"}
-            lost_keys = {"declined", "rejected", "lost", "canceled", "cancelled", "voided"}
+            won_keys = {
+                "approved", "pro approved", "accepted", "won", "sold", "selected",
+                # status-style wins
+                "created job from estimate", "complete rated", "complete unrated",
+                "scheduled", "in progress",
+            }
+            lost_keys = {
+                "declined", "pro declined", "rejected", "lost", "expired",
+                "canceled", "cancelled", "deleted", "voided",
+            }
+            pending_keys = {
+                "submitted for signoff", "needs scheduling",
+            }
 
             # Approval status is usually the best signal
             if a in won_keys:
@@ -1030,6 +1041,8 @@ def get_dashboard_kpis():
                 return "won"
             if s in lost_keys:
                 return "lost"
+            if s in pending_keys:
+                return "pending"
 
             return "pending"
 
@@ -1106,6 +1119,7 @@ def get_dashboard_kpis():
                     estimates=("estimate_id", "nunique"),
                     won=("outcome", lambda s: int((s == "won").sum())),
                     lost=("outcome", lambda s: int((s == "lost").sum())),
+                    pending=("outcome", lambda s: int((s == "pending").sum())),
                 )
                 .reset_index()
                 .sort_values("month")
@@ -1116,6 +1130,7 @@ def get_dashboard_kpis():
                     "estimates": int(r["estimates"]),
                     "won": int(r["won"]),
                     "lost": int(r["lost"]),
+                    "pending": int(r["pending"]),
                     "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
                 }
                 for _, r in mb.iterrows()
@@ -1129,6 +1144,7 @@ def get_dashboard_kpis():
                     estimates=("estimate_id", "nunique"),
                     won=("outcome", lambda s: int((s == "won").sum())),
                     lost=("outcome", lambda s: int((s == "lost").sum())),
+                    pending=("outcome", lambda s: int((s == "pending").sum())),
                 )
                 .reset_index()
                 .sort_values("estimates", ascending=False)
@@ -1139,6 +1155,7 @@ def get_dashboard_kpis():
                     "estimates": int(r["estimates"]),
                     "won": int(r["won"]),
                     "lost": int(r["lost"]),
+                    "pending": int(r["pending"]),
                     "win_rate": round((int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0), 1) if (int(r["won"]) + int(r["lost"])) > 0 else 0.0
                 }
                 for _, r in lsb.iterrows()
