@@ -112,6 +112,7 @@ def main():
         conn.close()
         return
 
+    # Pull jobs
     df_jobs = q(conn, """
         SELECT
           job_id,
@@ -129,15 +130,17 @@ def main():
         conn.close()
         return
 
+    # Parse datetimes
     df_jobs["completed_at_dt"] = pd.to_datetime(df_jobs["completed_at"], errors="coerce", utc=True)
     df_jobs["work_status_norm"] = df_jobs["work_status"].fillna("").astype(str).str.strip().str.lower()
     df_jobs["tags_norm"] = df_jobs["tags"].apply(normalize_tags)
     df_jobs["desc_norm"] = df_jobs["description"].fillna("").astype(str).str.strip().str.lower()
 
-    # SAFE UTC HANDLING
+    # YTD start (safe)
     now_utc = pd.Timestamp.now(tz="UTC")
     ytd_start = now_utc.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    # Completed jobs YTD
     df_completed_ytd = df_jobs[
         df_jobs["work_status_norm"].isin(COMPLETED_STATUSES)
         & df_jobs["completed_at_dt"].notna()
@@ -153,12 +156,17 @@ def main():
         "empty_tags_all_time": int((df_jobs["tags"].fillna("").astype(str).str.strip() == "").sum()),
     }]))
 
-    df_completed_ytd["is_install_like"] = df_completed_ytd["tags_norm"].apply(lambda s: contains_any(s, INSTALL_EXCLUDE_KEYWORDS))
+    # Service call population (exclude install-like)
+    df_completed_ytd["is_install_like"] = df_completed_ytd["tags_norm"].apply(
+        lambda s: contains_any(s, INSTALL_EXCLUDE_KEYWORDS)
+    )
     df_service_ytd = df_completed_ytd[~df_completed_ytd["is_install_like"]].copy()
 
+    # Club signal sources
     df_service_ytd["club_from_tags"] = df_service_ytd["tags_norm"].apply(lambda s: contains_any(s, CLUB_KEYWORDS))
     df_service_ytd["club_from_description"] = df_service_ytd["desc_norm"].apply(lambda s: contains_any(s, CLUB_KEYWORDS))
 
+    # Invoice items source (optional)
     has_invoices = table_exists(conn, "invoices")
     has_items = table_exists(conn, "invoice_items")
 
@@ -169,12 +177,34 @@ def main():
 
         if "error" not in df_inv.columns and "error" not in df_it.columns and not df_inv.empty and not df_it.empty:
             df_inv["invoice_date_dt"] = pd.to_datetime(df_inv["invoice_date"], errors="coerce", utc=True)
-            df_inv_ytd = df_inv[df_inv["invoice_date_dt"] >= ytd_start].copy()
 
+            # keep invoices YTD (any status, we just want to see membership line items)
+            df_inv_ytd = df_inv[df_inv["invoice_date_dt"].notna() & (df_inv["invoice_date_dt"] >= ytd_start)].copy()
+
+            # Join items -> invoices (invoice_id)
             df_it["name_norm"] = df_it["name"].fillna("").astype(str).str.strip().str.lower()
-            df_join = df_it.merge(df_inv_ytd[["invoice_id", "job_id"]], on="invoice_id", how="inner")
 
+            # IMPORTANT: suffixes ensure we can pick the right job_id deterministically
+            df_join = df_it.merge(
+                df_inv_ytd[["invoice_id", "job_id"]],
+                on="invoice_id",
+                how="inner",
+                suffixes=("_item", "_inv"),
+            )
+
+            # Debug: verify columns if anything ever changes
+            # (kept as a small, helpful print that won’t spam)
+            print_df("invoice_items join columns (debug)", pd.DataFrame({"col": list(df_join.columns)}), max_rows=200)
+
+            # Stable job_id: prefer invoice job_id, fallback to item job_id
+            df_join["job_id"] = df_join["job_id_inv"].fillna(df_join["job_id_item"])
+
+            # Determine if any line item name contains club keywords
             df_join["club_item"] = df_join["name_norm"].apply(lambda s: contains_any(s, CLUB_KEYWORDS))
+
+            # Guard: exclude null/empty job_id so groupby never fails
+            df_join = df_join[df_join["job_id"].notna() & (df_join["job_id"].astype(str).str.strip() != "")].copy()
+
             df_invoice_club = (
                 df_join.groupby("job_id")["club_item"]
                 .any()
@@ -182,12 +212,14 @@ def main():
                 .rename(columns={"club_item": "club_from_invoice_items"})
             )
 
+    # Merge invoice indicator into base
     if not df_invoice_club.empty:
         df_service_ytd = df_service_ytd.merge(df_invoice_club, on="job_id", how="left")
         df_service_ytd["club_from_invoice_items"] = df_service_ytd["club_from_invoice_items"].fillna(False)
     else:
         df_service_ytd["club_from_invoice_items"] = False
 
+    # KPI summaries by source
     total_service = int(len(df_service_ytd))
     club_tags = int(df_service_ytd["club_from_tags"].sum())
     club_desc = int(df_service_ytd["club_from_description"].sum())
