@@ -265,6 +265,134 @@
         {% endif %}
     </article>
 
+    
+<!-- FIRST-TIME COMPLETION CARD -->
+<article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
+  <div class="jc-ftc-layout">
+    <div class="jc-ftc-left">
+      <div class="jc-kpi-header">
+        <div class="jc-kpi-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <div class="jc-kpi-meta">
+          <div class="jc-kpi-label">First-Time Completion</div>
+          <div class="jc-kpi-badge">Quality KPI</div>
+        </div>
+      </div>
+
+      <div class="jc-ftc-gauge">
+        <svg viewBox="0 0 200 200" class="jc-gauge-svg">
+          <!-- Background ring -->
+          <circle cx="100" cy="100" r="80" class="jc-gauge-bg"></circle>
+
+          <!-- Animated ring -->
+          <circle
+            cx="100" cy="100" r="80"
+            class="jc-gauge-fill"
+            data-percent="{{ first_time_completion_pct }}">
+          </circle>
+
+          <!-- Animated number (keep UPRIGHT: no transform here) -->
+          <text
+            x="100" y="95"
+            class="jc-gauge-value"
+            data-target="{{ first_time_completion_pct }}">
+            0%
+          </text>
+
+          <text
+            x="100" y="115"
+            class="jc-gauge-label">
+            Complete
+          </text>
+        </svg>
+      </div>
+
+      <div class="jc-ftc-target">
+        <span class="jc-target-label">Target:</span>
+        <span class="jc-target-value">{{ first_time_completion_target }}%</span>
+      </div>
+    </div>
+
+    <div class="jc-ftc-right">
+      <div class="jc-ftc-stats">
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">✓</div>
+          <div class="jc-stat-value">{{ first_time_completed }}</div>
+          <div class="jc-stat-label">First-time (1 appt)</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">↻</div>
+          <div class="jc-stat-value">{{ repeat_visit_completed }}</div>
+          <div class="jc-stat-label">Repeat visit (2+)</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">%</div>
+          <div class="jc-stat-value">{{ repeat_visit_pct }}%</div>
+          <div class="jc-stat-label">Repeat-visit rate</div>
+        </div>
+
+        <div class="jc-stat-card">
+          <div class="jc-stat-icon">#</div>
+          <div class="jc-stat-value">{{ completed_jobs }}</div>
+          <div class="jc-stat-label">Total completed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>
+
+</section>
+<!-- REPEAT JOBS SECTION -->
+<section class="jc-data-card" aria-labelledby="repeat-jobs-title">
+    <div class="jc-data-header">
+        <div class="jc-data-title-group">
+            <h2 id="repeat-jobs-title" class="jc-section-title">Repeat-Visit Completed Jobs</h2>
+            <p class="jc-data-subtitle">Jobs requiring 2+ appointments - review to improve First-Time Completion</p>
+        </div>
+    </div>
+
+    <div class="jc-table-container">
+        <table class="jc-data-table">
+            <thead>
+                <tr>
+                    <th>Completed</th>
+                    <th>Customer</th>
+                    <th>Appointments</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if repeat_jobs and repeat_jobs|length > 0 %}
+                    {% for r in repeat_jobs %}
+                    <tr>
+                        <td>{{ r.completed_at_central }}</td>
+                        <td class="jc-cell-bold">{{ r.customer_name }}</td>
+                        <td>
+                            <span class="jc-appt-badge">{{ r.num_appointments }}</span>
+                        </td>
+                        <td>
+                            <span class="jc-work-status">{{ r.work_status }}</span>
+                        </td>
+                        <td class="jc-desc-cell">{{ r.description }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="jc-empty-cell">No repeat-visit completed jobs found.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
 
     <!-- LEAD TURNOVER CARD -->
     <article class="jc-kpi-card jc-kpi-lead jc-kpi-wide jc-kpi-full" aria-labelledby="kpi-lead-title">
@@ -430,88 +558,6 @@
 
 
 
-<!-- FIRST-TIME COMPLETION CARD -->
-<article class="jc-kpi-card jc-kpi-ftc jc-kpi-wide" aria-labelledby="kpi-ftc-title">
-  <div class="jc-ftc-layout">
-    <div class="jc-ftc-left">
-      <div class="jc-kpi-header">
-        <div class="jc-kpi-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-          </svg>
-        </div>
-        <div class="jc-kpi-meta">
-          <div class="jc-kpi-label">First-Time Completion</div>
-          <div class="jc-kpi-badge">Quality KPI</div>
-        </div>
-      </div>
-
-      <div class="jc-ftc-gauge">
-        <svg viewBox="0 0 200 200" class="jc-gauge-svg">
-          <!-- Background ring -->
-          <circle cx="100" cy="100" r="80" class="jc-gauge-bg"></circle>
-
-          <!-- Animated ring -->
-          <circle
-            cx="100" cy="100" r="80"
-            class="jc-gauge-fill"
-            data-percent="{{ first_time_completion_pct }}">
-          </circle>
-
-          <!-- Animated number (keep UPRIGHT: no transform here) -->
-          <text
-            x="100" y="95"
-            class="jc-gauge-value"
-            data-target="{{ first_time_completion_pct }}">
-            0%
-          </text>
-
-          <text
-            x="100" y="115"
-            class="jc-gauge-label">
-            Complete
-          </text>
-        </svg>
-      </div>
-
-      <div class="jc-ftc-target">
-        <span class="jc-target-label">Target:</span>
-        <span class="jc-target-value">{{ first_time_completion_target }}%</span>
-      </div>
-    </div>
-
-    <div class="jc-ftc-right">
-      <div class="jc-ftc-stats">
-        <div class="jc-stat-card">
-          <div class="jc-stat-icon">✓</div>
-          <div class="jc-stat-value">{{ first_time_completed }}</div>
-          <div class="jc-stat-label">First-time (1 appt)</div>
-        </div>
-
-        <div class="jc-stat-card">
-          <div class="jc-stat-icon">↻</div>
-          <div class="jc-stat-value">{{ repeat_visit_completed }}</div>
-          <div class="jc-stat-label">Repeat visit (2+)</div>
-        </div>
-
-        <div class="jc-stat-card">
-          <div class="jc-stat-icon">%</div>
-          <div class="jc-stat-value">{{ repeat_visit_pct }}%</div>
-          <div class="jc-stat-label">Repeat-visit rate</div>
-        </div>
-
-        <div class="jc-stat-card">
-          <div class="jc-stat-icon">#</div>
-          <div class="jc-stat-value">{{ completed_jobs }}</div>
-          <div class="jc-stat-label">Total completed</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</article>
-
-</section>
 
 <!-- Employee KPI CARDS SECTION -->
 <section class="jc-employee-section" aria-label="Technician KPIs">
@@ -795,50 +841,6 @@
 </section> 
 -->
 
-<!-- REPEAT JOBS SECTION -->
-<section class="jc-data-card" aria-labelledby="repeat-jobs-title">
-    <div class="jc-data-header">
-        <div class="jc-data-title-group">
-            <h2 id="repeat-jobs-title" class="jc-section-title">Repeat-Visit Completed Jobs</h2>
-            <p class="jc-data-subtitle">Jobs requiring 2+ appointments - review to improve First-Time Completion</p>
-        </div>
-    </div>
-
-    <div class="jc-table-container">
-        <table class="jc-data-table">
-            <thead>
-                <tr>
-                    <th>Completed</th>
-                    <th>Customer</th>
-                    <th>Appointments</th>
-                    <th>Status</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if repeat_jobs and repeat_jobs|length > 0 %}
-                    {% for r in repeat_jobs %}
-                    <tr>
-                        <td>{{ r.completed_at_central }}</td>
-                        <td class="jc-cell-bold">{{ r.customer_name }}</td>
-                        <td>
-                            <span class="jc-appt-badge">{{ r.num_appointments }}</span>
-                        </td>
-                        <td>
-                            <span class="jc-work-status">{{ r.work_status }}</span>
-                        </td>
-                        <td class="jc-desc-cell">{{ r.description }}</td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="5" class="jc-empty-cell">No repeat-visit completed jobs found.</td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-</section>
 
 <div class="jc-footer-refresh">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
