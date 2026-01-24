@@ -556,107 +556,97 @@
 
     </article>
 
-
-
-
-
-<!-- CLUB AGREEMENT KPI CARD -->
-<article class="jc-kpi-card jc-kpi-club jc-kpi-wide jc-kpi-full" aria-labelledby="kpi-club-title">
-  {% set club_pct = club_conversion_pct_ytd|default(club_conversion_pct|default(0.0)) %}
-  {% set club_pct_display = club_conversion_pct_ytd_display|default(club_conversion_pct_display|default(club_conversion_pct_display|default('—'))) %}
-  {% set club_total = total_service_calls_ytd|default(eligible_service_calls_ytd|default(0)) %}
-  {% set club_calls = club_service_calls_ytd|default(club_calls_ytd|default(0)) %}
-  {% set nonclub_calls = (club_total - club_calls) if (club_total is not none and club_calls is not none) else nonclub_service_calls_ytd|default(0) %}
-  {% set club_status = club_conversion_status|default('success' if club_pct >= 0.50 else ('warning' if club_pct >= 0.30 else 'danger')) %}
-
-  <div class="jc-kpi-header">
-    <div class="jc-kpi-icon">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-        <circle cx="12" cy="7" r="4"></circle>
-        <path d="M19 8l2 2-2 2"></path>
-        <path d="M21 10h-2"></path>
-      </svg>
-    </div>
-
-    <div class="jc-kpi-meta">
-      <div class="jc-kpi-label" id="kpi-club-title">Club Agreement Conversion (YTD)</div>
-      <div class="jc-kpi-badge">Growth KPI</div>
-    </div>
-
-    <div class="jc-kpi-actions">
-      <span class="jc-status-pill jc-status-{{ club_status }}">Target: {{ (club_conversion_target|default(0.50) * 100)|round(0)|int }}%</span>
-    </div>
-  </div>
-
-  <div class="jc-club-layout">
-    <div class="jc-club-hero">
-      <div class="jc-club-hero-value jc-status-{{ club_status }}">{{ club_pct_display }}</div>
-      <div class="jc-club-hero-sub">{{ club_calls }} club jobs out of {{ club_total }} eligible service calls</div>
-
-      <div class="jc-club-bar">
-        <div class="jc-club-bar-track" aria-hidden="true">
-          <div class="jc-club-bar-fill jc-status-{{ club_status }}" data-fill="{{ (club_pct * 100)|round(2) }}"></div>
+<!-- CLUB AGREEMENT CONVERSION CARD -->
+<article class="jc-kpi-card jc-kpi-club jc-kpi-wide" aria-labelledby="kpi-club-title">
+    <div class="jc-kpi-header">
+        <div class="jc-kpi-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l3 7 7 1-5 5 2 7-7-4-7 4 2-7-5-5 7-1 3-7z"></path>
+            </svg>
         </div>
-        <div class="jc-club-bar-labels">
-          <span>0%</span>
-          <span>{{ (club_conversion_target|default(0.50) * 100)|round(0)|int }}% target</span>
-          <span>100%</span>
+        <div class="jc-kpi-meta">
+            <div class="jc-kpi-label" id="kpi-club-title">Club Agreement Conversion (YTD)</div>
+            <div class="jc-kpi-badge">Growth KPI</div>
         </div>
-      </div>
+
+        <div class="jc-kpi-chip jc-kpi-chip-muted">
+            Target: {{ club_conversion_target|default(50) }}%
+        </div>
     </div>
 
-    <div class="jc-club-stats">
-      <div class="jc-mini-stat">
-        <div class="jc-mini-stat-label">Eligible service calls</div>
-        <div class="jc-mini-stat-value">{{ club_total }}</div>
-      </div>
+    <div class="jc-club-top">
+        <div class="jc-club-hero">
+            <div class="jc-club-big jc-status-{{ club_conversion_status|default('danger') }}">
+                {{ club_conversion_pct_display|default('0.00%') }}
+            </div>
+            <div class="jc-club-sub">
+                {{ club_calls_ytd|default(0) }} club jobs out of {{ eligible_service_calls_ytd|default(0) }} eligible service calls
+            </div>
 
-      <div class="jc-mini-stat">
-        <div class="jc-mini-stat-label">Club jobs (YTD)</div>
-        <div class="jc-mini-stat-value">{{ club_calls }}</div>
-      </div>
+            <div class="jc-club-progress jc-status-{{ club_conversion_status|default('danger') }}">
+                <div class="jc-progress-bar-container">
+                    <div class="jc-progress-bar-fill jc-status-{{ club_conversion_status|default('danger') }}"
+                         data-fill="{{ club_conversion_pct|default(0) }}"></div>
+                </div>
+                <div class="jc-club-scale">
+                    <span>0%</span>
+                    <span class="jc-club-target-label">Target {{ club_conversion_target|default(50) }}%</span>
+                    <span>100%</span>
+                </div>
+            </div>
+        </div>
 
-      <div class="jc-mini-stat">
-        <div class="jc-mini-stat-label">Non-club jobs (YTD)</div>
-        <div class="jc-mini-stat-value">{{ nonclub_calls }}</div>
-      </div>
+        <div class="jc-club-stats">
+            <div class="jc-club-stat">
+                <div class="jc-club-stat-label">Eligible service calls</div>
+                <div class="jc-club-stat-value">{{ eligible_service_calls_ytd|default(0) }}</div>
+            </div>
+            <div class="jc-club-stat">
+                <div class="jc-club-stat-label">Club jobs (YTD)</div>
+                <div class="jc-club-stat-value">{{ club_calls_ytd|default(0) }}</div>
+            </div>
+            <div class="jc-club-stat">
+                <div class="jc-club-stat-label">Non-club jobs (YTD)</div>
+                <div class="jc-club-stat-value">{{ nonclub_service_calls_ytd|default(0) }}</div>
+            </div>
+        </div>
     </div>
 
-    <div class="jc-club-trend">
-      <div class="jc-section-title">Monthly trend (YTD)</div>
-
-      <div class="jc-table-container">
-        <table class="jc-data-table">
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th class="jc-num">Eligible service calls</th>
-              <th class="jc-num">Club jobs</th>
-              <th class="jc-num">Conversion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if club_monthly_trend and club_monthly_trend|length > 0 %}
-              {% for r in club_monthly_trend %}
-              <tr>
-                <td>{{ r.month }}</td>
-                <td class="jc-num">{{ r.service_calls }}</td>
-                <td class="jc-num">{{ r.club_calls|default(r.club_jobs|default(r.club_service_calls|default(r.club_calls_ytd|default(0)))) }}</td>
-                <td class="jc-num">{{ r.club_conversion_pct_ytd_display|default(r.club_conversion_pct_display|default(r.club_conversion_pct_display|default(r.club_conversion_pct))) }}</td>
-              </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="4" class="jc-muted jc-center">No YTD club conversion data yet.</td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
+    <div class="jc-club-bottom">
+        <div class="jc-section-title">Monthly trend (YTD)</div>
+        <div class="jc-table-container">
+            <table class="jc-data-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Eligible service calls</th>
+                        <th>Club jobs</th>
+                        <th>Conversion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if club_monthly and club_monthly|length > 0 %}
+                        {% for row in club_monthly %}
+                            <tr>
+                                <td>{{ row.month }}</td>
+                                <td>{{ row.service_calls }}</td>
+                                <td>{{ row.club_calls }}</td>
+                                <td class="jc-status-{{ club_conversion_status|default('danger') }}">{{ row.club_conversion_pct_display }}</td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="jc-table-empty">No YTD club conversion data yet.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
     </div>
-  </div>
 </article>
+
+
+
 
 
 <!-- Employee KPI CARDS SECTION -->
@@ -1056,15 +1046,20 @@
 
 
 <script>
-  // Sets KPI progress bar widths without embedding Jinja inside CSS (prevents editor CSS parse errors)
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.jc-club-bar-fill[data-fill]').forEach(el => {
-      const raw = parseFloat(el.dataset.fill);
-      if (!Number.isFinite(raw)) return;
-      const v = Math.max(0, Math.min(100, raw));
-      el.style.width = v + '%';
-    });
-  });
+  // Apply progress fill widths from data-fill attributes (keeps VS Code CSS parser happy)
+  (function () {
+    try {
+      document.querySelectorAll('[data-fill]').forEach(function (el) {
+        var raw = el.getAttribute('data-fill');
+        var v = parseFloat(raw);
+        if (!isFinite(v)) v = 0;
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        el.style.width = v.toFixed(2) + '%';
+      });
+    } catch (e) {}
+  })();
 </script>
+
 </body>
 </html>

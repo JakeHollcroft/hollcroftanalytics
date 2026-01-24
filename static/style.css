@@ -2810,146 +2810,145 @@ footer {
 
 
 /* =========================
-   Club Agreement KPI (YTD) — simplified layout
+   Club Agreement Conversion (YTD)
    ========================= */
 
-.jc-status-pill{
+.jc-kpi-club .jc-kpi-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.jc-kpi-club .jc-kpi-meta{
+  flex:1;
+  min-width: 240px;
+}
+
+.jc-kpi-chip{
   display:inline-flex;
   align-items:center;
-  gap:8px;
-  padding:6px 10px;
+  padding:6px 12px;
   border-radius:999px;
-  font-size:0.78rem;
-  font-weight:700;
-  letter-spacing:0.04em;
+  font-size:12px;
+  letter-spacing:0.06em;
   text-transform:uppercase;
-  border:1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.18);
+  border:1px solid rgba(226,232,240,0.18);
+  background: rgba(255,255,255,0.04);
+  color: rgba(226,232,240,0.9);
 }
 
-.jc-status-pill.jc-status-success{
-  border-color: rgba(34,197,94,0.35);
-  background: rgba(34,197,94,0.10);
-  color: rgba(170, 255, 200, 0.95);
-}
-.jc-status-pill.jc-status-warning{
-  border-color: rgba(245,158,11,0.40);
-  background: rgba(245,158,11,0.10);
-  color: rgba(255, 224, 170, 0.95);
-}
-.jc-status-pill.jc-status-danger{
-  border-color: rgba(239,68,68,0.45);
-  background: rgba(239,68,68,0.10);
-  color: rgba(255, 180, 180, 0.95);
+.jc-kpi-chip-muted{
+  opacity:0.9;
 }
 
-.jc-club-layout{
+.jc-club-top{
   display:grid;
-  grid-template-columns: 1.6fr 1fr;
-  grid-template-areas:
-    "hero stats"
-    "trend trend";
-  gap: 18px;
-  margin-top: 14px;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 16px;
+  margin-top: 10px;
 }
 
 .jc-club-hero{
-  grid-area: hero;
-  padding: 18px;
+  border:1px solid rgba(226,232,240,0.14);
+  background: rgba(0,0,0,0.15);
   border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.14);
+  padding: 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.jc-club-hero-value{
-  font-size: clamp(2.6rem, 4.2vw, 3.4rem);
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  line-height: 1.0;
+.jc-club-big{
+  font-size: clamp(44px, 5vw, 72px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
 }
 
-.jc-club-hero-sub{
-  margin-top: 10px;
-  font-size: 1rem;
-  color: rgba(226, 232, 240, 0.82);
+.jc-club-sub{
+  color: rgba(226,232,240,0.78);
+  font-size: 14px;
+  margin-bottom: 14px;
 }
 
-.jc-club-bar{
-  margin-top: 14px;
-}
-
-.jc-club-bar-track{
-  height: 12px;
+.jc-club-progress .jc-progress-bar-container{
+  height: 14px;
   border-radius: 999px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
 }
 
-.jc-club-bar-fill{
+.jc-club-progress .jc-progress-bar-fill{
   height: 100%;
-  width: 0%;
   border-radius: 999px;
-  background: rgba(42,167,224,0.75);
+  width: 0%;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.jc-club-bar-fill.jc-status-success{ background: rgba(34,197,94,0.75); }
-.jc-club-bar-fill.jc-status-warning{ background: rgba(245,158,11,0.75); }
-.jc-club-bar-fill.jc-status-danger{ background: rgba(239,68,68,0.75); }
+/* Progress fill colors keyed off status classes */
+.jc-club-progress .jc-progress-bar-fill.jc-status-success{
+  background: linear-gradient(90deg, rgba(40,167,69,0.95), rgba(25,135,84,0.95));
+  box-shadow: 0 2px 10px rgba(40,167,69,0.35);
+}
 
-.jc-club-bar-labels{
-  margin-top: 8px;
+.jc-club-progress .jc-progress-bar-fill.jc-status-warning{
+  background: linear-gradient(90deg, rgba(255,193,7,0.95), rgba(245,158,11,0.95));
+  box-shadow: 0 2px 10px rgba(255,193,7,0.30);
+}
+
+.jc-club-progress .jc-progress-bar-fill.jc-status-danger{
+  background: linear-gradient(90deg, rgba(220,53,69,0.95), rgba(239,68,68,0.95));
+  box-shadow: 0 2px 10px rgba(220,53,69,0.30);
+}
+
+.jc-club-scale{
   display:flex;
-  justify-content: space-between;
+  justify-content:space-between;
   gap: 10px;
-  font-size: 0.82rem;
-  color: rgba(226, 232, 240, 0.72);
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(226,232,240,0.70);
+}
+
+.jc-club-target-label{
+  color: rgba(226,232,240,0.92);
 }
 
 .jc-club-stats{
-  grid-area: stats;
   display:grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
-.jc-mini-stat{
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.12);
+.jc-club-stat{
+  border:1px solid rgba(226,232,240,0.14);
   background: rgba(0,0,0,0.12);
-}
-
-.jc-mini-stat-label{
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.72);
-  margin-bottom: 6px;
-}
-
-.jc-mini-stat-value{
-  font-size: 1.6rem;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-}
-
-.jc-club-trend{
-  grid-area: trend;
-  padding: 18px;
   border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.10);
+  padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.jc-num{ text-align: right; }
-.jc-center{ text-align: center; }
-.jc-muted{ color: rgba(226, 232, 240, 0.65); }
-
-@media (max-width: 980px){
-  .jc-club-layout{
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "hero"
-      "stats"
-      "trend";
-  }
+.jc-club-stat-label{
+  color: rgba(226,232,240,0.70);
+  font-size: 13px;
+  margin-bottom: 8px;
 }
 
+.jc-club-stat-value{
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.jc-club-bottom{
+  margin-top: 16px;
+}
+
+.jc-section-title{
+  font-size: 18px;
+  font-weight: 800;
+  margin: 6px 0 10px;
+}
+
+@media (max-width: 1100px){
+  .jc-club-top{ grid-template-columns: 1fr; }
+  .jc-club-stats{ grid-template-columns: 1fr; }
+}
