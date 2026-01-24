@@ -423,6 +423,7 @@ def _get_metadata(conn: duckdb.DuckDBPyConnection, key: str) -> str | None:
         return None
 
 
+
 def _set_metadata(conn: duckdb.DuckDBPyConnection, key: str, value: str) -> None:
     conn.execute(
         """
@@ -1219,29 +1220,18 @@ def run_ingestion(
     since_iso = since_dt.isoformat()
 
     conn = duckdb.connect(DB_FILE)
+    lock_acquired = False
+
     try:
         ensure_core_tables(conn)
 
-
-        # --------------------------
-        # PRICE BOOK (optional)
-        # --------------------------
-        # Used to improve parts cost + service duration estimates for GP/HR.
-        try:
-            print("[INGEST] Fetching price book services/materials...")
-            df_pb_services, df_pb_materials = fetch_pricebook_services()
-            upsert_pricebook_services(conn, df_pb_services)
-            upsert_pricebook_materials(conn, df_pb_materials)
-            print(f"[INGEST] Price book: {len(df_pb_services)} services, {len(df_pb_materials)} materials")
-        except Exception as e:
-            print(f"[INGEST] Price book fetch skipped (non-fatal): {e}")
         # lock protects from overlapping runs across scheduler + button
-        if not acquire_lock(conn):
-            conn.close()
+        lock_acquired = acquire_lock(conn)
+        if not lock_acquired:
             return
 
         # Min-interval check (only after lock, so two schedulers don't both run)
-        if not should_run_min_interval(conn, int(min_interval_seconds)):
+        if min_interval_seconds and not should_run_min_interval(conn, int(min_interval_seconds)):
             print(f"[{_ts()}] RUN {RUN_ID} Skipping ingestion (min interval {min_interval_seconds}s not reached).")
             return
 
@@ -1250,6 +1240,24 @@ def run_ingestion(
 
         _set_metadata(conn, "last_window_start", since_iso)
         _set_metadata(conn, "last_window_end", now_utc.isoformat())
+
+        # --------------------------
+        # PRICE BOOK (optional)
+        # --------------------------
+        # Used to improve parts cost + service duration estimates for GP/HR.
+        # Do this ONCE, under lock.
+        try:
+            print(f"[{_ts()}] RUN {RUN_ID} Fetching Pricebook Services/Materials...")
+            df_pb_services, df_pb_materials = fetch_pricebook_services(page_size=100)
+            upsert_pricebook_services(conn, df_pb_services)
+            upsert_pricebook_materials(conn, df_pb_materials)
+            print(
+                f"[{_ts()}] RUN {RUN_ID} Pricebook upserted "
+                f"services={0 if df_pb_services is None else len(df_pb_services)} "
+                f"materials={0 if df_pb_materials is None else len(df_pb_materials)}"
+            )
+        except Exception as e:
+            print(f"[{_ts()}] RUN {RUN_ID} Warning: pricebook fetch/upsert failed (non-fatal): {e}")
 
         # Employees
         print(f"[{_ts()}] RUN {RUN_ID} Fetching Employees...")
@@ -1262,7 +1270,13 @@ def run_ingestion(
         if BACKFILL:
             estimates_data = fetch_all(BASE_URL_ESTIMATES, key_name="estimates", page_size=100)
         else:
-            estimates_data = fetch_all_recent(BASE_URL_ESTIMATES, key_name="estimates", since_iso=since_iso, page_size=100)
+            estimates_data = fetch_all_recent(
+                BASE_URL_ESTIMATES,
+                key_name="estimates",
+                since_iso=since_iso,
+                page_size=100,
+            )
+
         df_estimates, df_estimate_options, df_estimate_emps = flatten_estimates(estimates_data)
         upsert_estimates(conn, df_estimates)
         upsert_estimate_options(conn, df_estimate_options)
@@ -1290,7 +1304,8 @@ def run_ingestion(
                             dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
                             if dt.tzinfo is None:
                                 dt = dt.replace(tzinfo=timezone.utc)
-                            return dt >= detail_window_start
+                            if dt >= detail_window_start:
+                                return True
                         except Exception:
                             continue
                 return True
@@ -1339,6 +1354,7 @@ def run_ingestion(
             customers_data = fetch_all(BASE_URL_CUSTOMERS, key_name="customers", page_size=100)
         else:
             customers_data = fetch_all_recent(BASE_URL_CUSTOMERS, key_name="customers", since_iso=since_iso, page_size=100)
+
         df_customers = flatten_customers(customers_data)
 
         # Invoices
@@ -1362,7 +1378,8 @@ def run_ingestion(
         print(f"[{_ts()}] RUN {RUN_ID} Ingestion complete.")
 
     finally:
-        release_lock(conn)
+        if lock_acquired:
+            release_lock(conn)
         conn.close()
 
 
