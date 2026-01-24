@@ -559,6 +559,131 @@
 
 
 
+
+<!-- CLUB AGREEMENT KPI CARD -->
+<article class="jc-kpi-card jc-kpi-club jc-kpi-wide jc-kpi-full" aria-labelledby="kpi-club-title">
+  <div class="jc-kpi-header">
+    <div class="jc-kpi-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+        <path d="M19 8l2 2-2 2"></path>
+        <path d="M21 10h-2"></path>
+      </svg>
+    </div>
+    <div class="jc-kpi-meta">
+      <div class="jc-kpi-label" id="kpi-club-title">Club Agreement Conversion (YTD)</div>
+      <div class="jc-kpi-badge">Growth KPI</div>
+    </div>
+
+    <div class="jc-kpi-badge jc-kpi-badge-soft jc-club-signal" title="How we detect club jobs">
+      Signals: Tags · Description · Invoice items
+    </div>
+  </div>
+
+  <div class="jc-club-hero">
+    <div class="jc-club-rate">
+      <div class="jc-club-rate-value">{{ club_conversion_pct_display|default('—') }}</div>
+      <div class="jc-club-rate-sub">
+        {{ club_calls_ytd|default(0) }} club jobs out of {{ eligible_service_calls_ytd|default(0) }} eligible service calls
+      </div>
+    </div>
+
+    <div class="jc-club-stats">
+      <div class="jc-club-stat">
+        <div class="jc-club-stat-label">Eligible service calls</div>
+        <div class="jc-club-stat-value">{{ eligible_service_calls_ytd|default(0) }}</div>
+      </div>
+      <div class="jc-club-stat">
+        <div class="jc-club-stat-label">Club jobs (YTD)</div>
+        <div class="jc-club-stat-value">{{ club_calls_ytd|default(0) }}</div>
+      </div>
+      <div class="jc-club-stat">
+        <div class="jc-club-stat-label">Non-club jobs (YTD)</div>
+        <div class="jc-club-stat-value">{{ nonclub_service_calls_ytd|default(0) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="jc-club-breakdown" aria-label="Club conversion by signal source">
+    <div class="jc-club-break-row">
+      <div class="jc-club-break-label">From tags</div>
+      <div class="jc-club-break-metric">
+        <span class="pill">{{ club_calls_from_tags|default(0) }} jobs</span>
+        <span class="jc-club-break-pct">{{ pct_from_tags_display|default(pct_from_tags|default('0')) }}%</span>
+      </div>
+    </div>
+
+    <div class="jc-club-break-row">
+      <div class="jc-club-break-label">From description</div>
+      <div class="jc-club-break-metric">
+        <span class="pill">{{ club_calls_from_description|default(0) }} jobs</span>
+        <span class="jc-club-break-pct">{{ pct_from_description_display|default(pct_from_description|default('0')) }}%</span>
+      </div>
+    </div>
+
+    <div class="jc-club-break-row">
+      <div class="jc-club-break-label">From invoice items</div>
+      <div class="jc-club-break-metric">
+        <span class="pill">{{ club_calls_from_invoice_items|default(0) }} jobs</span>
+        <span class="jc-club-break-pct">{{ pct_from_invoice_items_display|default(pct_from_invoice_items|default('0')) }}%</span>
+      </div>
+    </div>
+  </div>
+
+  <details class="jc-club-details">
+    <summary>See detection keywords + monthly trend</summary>
+
+    <div class="jc-club-details-grid">
+      <div class="jc-club-panel">
+        <div class="jc-club-panel-title">Keywords used</div>
+        <div class="jc-club-keywords">
+          {% if club_keywords %}
+            {% for kw in club_keywords %}
+              <span class="pill">{{ kw }}</span>
+            {% endfor %}
+          {% else %}
+            <span class="jc-muted">No keywords configured.</span>
+          {% endif %}
+        </div>
+        <div class="jc-muted jc-club-hint">
+          Tip: tags often won’t include “club” even for maintenance customers. Description and invoice items can be better signals.
+        </div>
+      </div>
+
+      <div class="jc-club-panel">
+        <div class="jc-club-panel-title">Monthly trend (YTD)</div>
+        <div class="jc-table-wrap">
+          <table class="table table-sm jc-table">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th class="text-end">Service calls</th>
+                <th class="text-end">Club jobs</th>
+                <th class="text-end">Conversion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if club_monthly %}
+                {% for r in club_monthly %}
+                  <tr>
+                    <td>{{ r.month }}</td>
+                    <td class="text-end">{{ r.service_calls }}</td>
+                    <td class="text-end">{{ r.club_calls }}</td>
+                    <td class="text-end">{{ r.club_conversion_pct_display|default(r.club_conversion_pct) }}</td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="4" class="jc-empty-cell">No monthly club data yet.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </details>
+</article>
+
 <!-- Employee KPI CARDS SECTION -->
 <section class="jc-employee-section" aria-label="Technician KPIs">
   <div class="jc-employee-header">

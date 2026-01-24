@@ -23,6 +23,7 @@ from .kpi_parts import (
     kpi_employees,
     kpi_estimates,
     kpi_lead_turnover,
+    kpi_club,  # NEW
 )
 
 
@@ -281,6 +282,7 @@ def get_dashboard_kpis():
         out.update(kpi_employees.compute(ctx))
         out.update(kpi_estimates.compute(ctx))
         out.update(kpi_lead_turnover.compute(ctx))
+        out.update(kpi_club.compute(ctx))  # NEW
 
         # Refresh status
         refresh_status = get_refresh_status()

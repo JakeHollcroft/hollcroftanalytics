@@ -2629,3 +2629,181 @@ footer {
 .jc-lead-table thead th:nth-child(2) {
   white-space: nowrap;
 }
+
+/* =========================
+   Club Agreement KPI (YTD)
+   ========================= */
+.jc-kpi-club {
+  border: 1px solid rgba(42, 167, 224, 0.22);
+  background: radial-gradient(900px 420px at 10% 0%, rgba(42, 167, 224, 0.18), rgba(255,255,255,0.03) 55%),
+              radial-gradient(700px 380px at 90% 15%, rgba(20, 184, 166, 0.14), rgba(255,255,255,0.02) 55%),
+              linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+}
+
+.jc-kpi-club::after {
+  content: "";
+  position: absolute;
+  right: -120px;
+  top: -140px;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.22), rgba(42, 167, 224, 0.10) 45%, rgba(0,0,0,0) 70%);
+  filter: blur(0.2px);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.jc-kpi-club .jc-kpi-badge-soft {
+  border: 1px solid rgba(226, 232, 240, 0.20);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.88);
+  margin-left: auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.jc-club-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .jc-club-hero { grid-template-columns: 1fr; }
+}
+
+.jc-club-rate-value {
+  font-size: clamp(2.4rem, 4vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.jc-club-rate-sub {
+  margin-top: 6px;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.95rem;
+}
+
+.jc-club-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .jc-club-stats { grid-template-columns: 1fr; }
+}
+
+.jc-club-stat {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 12px 12px;
+  backdrop-filter: blur(10px);
+}
+
+.jc-club-stat-label {
+  font-size: 0.86rem;
+  color: rgba(226, 232, 240, 0.70);
+  margin-bottom: 4px;
+}
+
+.jc-club-stat-value {
+  font-size: 1.45rem;
+  font-weight: 750;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.jc-club-breakdown {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  padding-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .jc-club-breakdown { grid-template-columns: 1fr; }
+}
+
+.jc-club-break-row {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px;
+  padding: 12px 12px;
+}
+
+.jc-club-break-label {
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+
+.jc-club-break-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.jc-club-break-pct {
+  font-weight: 750;
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.jc-club-details {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  padding-top: 10px;
+}
+
+.jc-club-details summary {
+  cursor: pointer;
+  user-select: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 650;
+  padding: 10px 2px;
+}
+
+.jc-club-details-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .jc-club-details-grid { grid-template-columns: 1fr; }
+}
+
+.jc-club-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.jc-club-panel-title {
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.94);
+  margin-bottom: 10px;
+}
+
+.jc-club-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.jc-club-hint {
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
