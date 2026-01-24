@@ -222,6 +222,7 @@ def get_dashboard_kpis():
 
         df_rev["tags_norm"] = df_rev.get("tags_norm", "").fillna("")
         df_rev["category"] = df_rev["tags_norm"].apply(_map_category_from_tags)
+        df_rev["is_install"] = df_rev["category"].astype(str).str.contains("Install", case=False, na=False)
         df_rev["amount_dollars"] = pd.to_numeric(df_rev["amount"], errors="coerce").fillna(0.0).astype(float)
 
         # -----------------------------
