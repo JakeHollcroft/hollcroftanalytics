@@ -1,12 +1,26 @@
 # clients/jc_mechanical/kpi_parts/kpi_revenue.py
 
-from .helpers import _map_category_from_tags, _format_currency, _largest_remainder_int_percentages, _to_dt_utc
+import pandas as pd
+from .helpers import _format_currency, _largest_remainder_int_percentages
+
+
+AVG_TICKET_TARGET = 450.0
+
+
+def _status_from_threshold(value: float, target: float) -> str:
+    try:
+        v = float(value)
+    except Exception:
+        v = 0.0
+    return "success" if v >= target else "danger"
 
 
 def compute(ctx):
     df_rev = ctx["df_rev"]
-    start_of_year_utc = ctx["start_of_year_utc"]
 
+    # -----------------------------
+    # Total revenue + breakdown (existing)
+    # -----------------------------
     total_revenue_ytd = float(df_rev["amount_dollars"].sum()) if not df_rev.empty else 0.0
     total_revenue_ytd_display = _format_currency(total_revenue_ytd)
 
@@ -43,8 +57,65 @@ def compute(ctx):
                 "pct_of_max": pct_of_max,
             })
 
+    # -----------------------------
+    # Average Ticket (YTD) (NEW — matches template keys)
+    # -----------------------------
+    invoice_count = 0
+    average_ticket = 0.0
+
+    if not df_rev.empty:
+        # prefer invoice_id if present; else fall back to job_id
+        if "invoice_id" in df_rev.columns:
+            invoice_count = int(df_rev["invoice_id"].nunique())
+        else:
+            invoice_count = int(df_rev["job_id"].nunique())
+
+        total_amt = float(df_rev["amount_dollars"].sum())
+        average_ticket = (total_amt / invoice_count) if invoice_count > 0 else 0.0
+
+    average_ticket_display = _format_currency(average_ticket)
+    average_ticket_status = _status_from_threshold(average_ticket, AVG_TICKET_TARGET)
+
+    # split (service/install) if is_install exists
+    service_avg_ticket = 0.0
+    install_avg_ticket = 0.0
+    service_invoice_count = 0
+    install_invoice_count = 0
+
+    if (not df_rev.empty) and ("is_install" in df_rev.columns):
+        df_service = df_rev[df_rev["is_install"] == False].copy()
+        df_install = df_rev[df_rev["is_install"] == True].copy()
+
+        def _avg_and_count(dfx: pd.DataFrame):
+            if dfx.empty:
+                return 0.0, 0
+            cnt = int(dfx["invoice_id"].nunique()) if "invoice_id" in dfx.columns else int(dfx["job_id"].nunique())
+            tot = float(dfx["amount_dollars"].sum())
+            return (tot / cnt) if cnt > 0 else 0.0, cnt
+
+        service_avg_ticket, service_invoice_count = _avg_and_count(df_service)
+        install_avg_ticket, install_invoice_count = _avg_and_count(df_install)
+
     return {
         "total_revenue_ytd": total_revenue_ytd,
         "total_revenue_ytd_display": total_revenue_ytd_display,
         "revenue_breakdown_ytd": revenue_breakdown_ytd,
+
+        # legacy fallback keys (template uses these)
+        "average_ticket": average_ticket,
+        "average_ticket_display": average_ticket_display,
+        "average_ticket_status": average_ticket_status,
+        "invoice_count": invoice_count,
+        "avg_ticket_target": AVG_TICKET_TARGET,
+
+        # split keys (template prefers these when defined)
+        "service_avg_ticket": service_avg_ticket,
+        "service_avg_ticket_display": _format_currency(service_avg_ticket),
+        "service_avg_ticket_status": _status_from_threshold(service_avg_ticket, AVG_TICKET_TARGET),
+        "service_invoice_count": service_invoice_count,
+
+        "install_avg_ticket": install_avg_ticket,
+        "install_avg_ticket_display": _format_currency(install_avg_ticket),
+        "install_avg_ticket_status": _status_from_threshold(install_avg_ticket, AVG_TICKET_TARGET),
+        "install_invoice_count": install_invoice_count,
     }

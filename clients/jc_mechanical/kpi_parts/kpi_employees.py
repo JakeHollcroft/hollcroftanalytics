@@ -242,6 +242,7 @@ def compute(ctx):
         })
 
     # -----------------------------------
+    employee_cards.sort(key=lambda x: x.get("completed_jobs_ytd", 0), reverse=True)
 
     return {
         "employee_cards": employee_cards,
