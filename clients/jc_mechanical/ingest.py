@@ -122,6 +122,39 @@ def fetch_json(url: str, params: dict | None = None, *, timeout: int = 30, max_r
         preview = (resp.text or "")[:500]
         raise ValueError(f"Non-JSON response from {url}. HTTP {resp.status_code}. Body preview: {preview}")
 
+def _pricebook_extract(payload: dict):
+    """
+    Returns: (rows:list[dict], page:int|None, page_size:int|None, total_pages:int|None, total_items:int|None)
+    Supports both:
+      - tenant/list shape: top-level data + total_pages_count/total_count
+      - docs/checklists shape: payload["checklists"][0]["data"] + total_pages/total_items
+    """
+    if not isinstance(payload, dict):
+        return [], None, None, None, None
+
+    # Shape B: docs "checklists"
+    cl = payload.get("checklists")
+    if isinstance(cl, list) and cl:
+        first = cl[0] if isinstance(cl[0], dict) else {}
+        rows = first.get("data") or []
+        return (
+            rows if isinstance(rows, list) else [],
+            first.get("page"),
+            first.get("page_size"),
+            first.get("total_pages"),
+            first.get("total_items"),
+        )
+
+    # Shape A: your tenant "list"
+    rows = payload.get("data") or []
+    return (
+        rows if isinstance(rows, list) else [],
+        payload.get("page"),
+        payload.get("page_size"),
+        payload.get("total_pages_count"),
+        payload.get("total_count"),
+    )
+
 
 # -----------------------------
 # DuckDB setup
@@ -914,10 +947,11 @@ def upsert_invoice_items(conn: duckdb.DuckDBPyConnection, df_items: pd.DataFrame
 
 def fetch_pricebook_services(page_size: int = 100):
     """Fetch all price book services, plus any nested materials, from Housecall Pro."""
-    services: list[dict] = []
-    materials_by_uuid: dict[str, dict] = {}
+    services = []
+    materials_by_uuid = {}
 
     page = 1
+
     while True:
         params = {
             "page": page,
@@ -925,29 +959,29 @@ def fetch_pricebook_services(page_size: int = 100):
             "sort_by": "created_at",
             "sort_direction": "desc",
         }
-        data = fetch_json(BASE_URL_PRICEBOOK_SERVICES, params=params)
+        payload = fetch_json(BASE_URL_PRICEBOOK_SERVICES, params=params)
 
-        # Response shapes vary by doc version; handle a few common ones.
-        page_items: list[dict] = []
-        total_pages = None
+        page_rows, resp_page, resp_page_size, total_pages, total_items = _pricebook_extract(payload)
 
-        if isinstance(data, dict) and isinstance(data.get("checklists"), list) and data["checklists"]:
-            for chk in data["checklists"]:
-                if isinstance(chk, dict):
-                    page_items.extend(chk.get("data") or [])
-                    if total_pages is None:
-                        total_pages = chk.get("total_pages")
-        elif isinstance(data, dict):
-            page_items = data.get("data") or data.get("services") or []
-            total_pages = data.get("total_pages")
+        if page == 1:
+            if isinstance(payload, dict):
+                print(f"[INGEST] pricebook response shape keys={list(payload.keys())[:20]}")
+            else:
+                print(f"[INGEST] pricebook response type={type(payload)}")
 
-        if not page_items:
+            print(
+                f"[INGEST] pricebook page={resp_page} page_size={resp_page_size} "
+                f"total_pages={total_pages} total_items={total_items}"
+            )
+            print(f"[INGEST] pricebook rows page1={len(page_rows)}")
+
+        if not page_rows:
             break
 
-        services.extend(page_items)
+        services.extend(page_rows)
 
-        # Gather nested materials (best-effort)
-        for svc in page_items:
+        # pull nested materials
+        for svc in page_rows:
             sm = (svc or {}).get("service_materials") or {}
             sm_data = sm.get("data") if isinstance(sm, dict) else []
             if isinstance(sm_data, list):
@@ -966,6 +1000,7 @@ def fetch_pricebook_services(page_size: int = 100):
                             "material_category_name": mat.get("material_category_name"),
                         }
 
+        # stop conditions
         if total_pages is not None:
             try:
                 if page >= int(total_pages):
@@ -973,21 +1008,22 @@ def fetch_pricebook_services(page_size: int = 100):
             except Exception:
                 pass
 
-        # Fallback break condition if total_pages isn't provided
-        if len(page_items) < page_size:
+        if len(page_rows) < page_size:
             break
 
         page += 1
 
+    print(f"[INGEST] pricebook fetched services={len(services)} materials={len(materials_by_uuid)}")
+
     # Flatten services
-    rows = []
+    flat_rows = []
     for svc in services:
         uuid = (svc or {}).get("uuid") or (svc or {}).get("id")
         if not uuid:
             continue
         cat = (svc or {}).get("category") or {}
         ind = (svc or {}).get("industry") or {}
-        rows.append(
+        flat_rows.append(
             {
                 "service_uuid": uuid,
                 "name": svc.get("name"),
@@ -1006,9 +1042,10 @@ def fetch_pricebook_services(page_size: int = 100):
             }
         )
 
-    df_services = pd.DataFrame(rows)
+    df_services = pd.DataFrame(flat_rows)
     df_materials = pd.DataFrame(list(materials_by_uuid.values()))
     return df_services, df_materials
+
 
 
 def upsert_pricebook_services(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame):
