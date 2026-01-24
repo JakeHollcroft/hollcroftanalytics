@@ -2,7 +2,7 @@ import os
 import json
 import requests
 
-API_KEY = os.environ["HOUSECALL_API_KEY"]  # or whatever env var you use
+API_KEY = os.environ.get("HOUSECALLPRO_API_KEY", "").strip()
 URL = "https://api.housecallpro.com/api/price_book/services"
 
 headers = {
