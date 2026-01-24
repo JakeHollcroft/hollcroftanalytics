@@ -65,10 +65,12 @@ def compute(ctx: dict) -> dict:
                     "category": r["category"],
                     "revenue": r["revenue"],
                     "revenue_display": format_currency(r["revenue"]),
-                    "pct": int(pct_ints[i]) if i < len(pct_ints) else int(round(r["pct_raw"])),
+                    "pct_of_total": float(r["pct_raw"]),          # <-- add this (template expects it)
+                    "pct_of_total_int": int(pct_ints[i]) if i < len(pct_ints) else int(round(r["pct_raw"])),
                     "pct_raw": float(r["pct_raw"]),
                 }
             )
+
 
     # -----------------------------------
     # Average Ticket (overall, YTD, billed invoices)
