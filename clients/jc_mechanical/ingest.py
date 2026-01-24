@@ -946,75 +946,62 @@ def upsert_invoice_items(conn: duckdb.DuckDBPyConnection, df_items: pd.DataFrame
     )
 
 
-def fetch_pricebook_services(page_size: int = 100):
-    """Fetch all price book services, plus any nested materials, from Housecall Pro."""
-    services = []
-    materials_by_uuid = {}
-
+def fetch_pricebook_services(page_size: int = 200, max_pages: int | None = None) -> pd.DataFrame:
+    """
+    Fetch ALL pricebook services (paginated) from HCP.
+    Returns a dataframe ready for upsert_pricebook_services().
+    """
+    url = "https://api.housecallpro.com/api/price_book/services"
     page = 1
+    frames = []
 
     while True:
-        params = {
-            "page": page,
-            "page_size": page_size,
-            "sort_by": "created_at",
-            "sort_direction": "desc",
-        }
-        payload = fetch_json(BASE_URL_PRICEBOOK_SERVICES, params=params)
+        params = {"page": page, "page_size": page_size}
+        r = requests.get(url, headers=HEADERS, params=params, timeout=60)
+        print(f"[PRICEBOOK] GET {r.url} -> {r.status_code}")
+        r.raise_for_status()
 
-        page_rows, resp_page, resp_page_size, total_pages, total_items = _pricebook_extract(payload)
-
-        if page == 1:
-            if isinstance(payload, dict):
-                print(f"[INGEST] pricebook response shape keys={list(payload.keys())[:20]}")
-            else:
-                print(f"[INGEST] pricebook response type={type(payload)}")
-
-            print(
-                f"[INGEST] pricebook page={resp_page} page_size={resp_page_size} "
-                f"total_pages={total_pages} total_items={total_items}"
-            )
-            print(f"[INGEST] pricebook rows page1={len(page_rows)}")
-
-        if not page_rows:
+        payload = r.json()
+        data = payload.get("data") or []
+        if not data:
             break
 
-        services.extend(page_rows)
+        df = pd.json_normalize(data)
 
-        # pull nested materials
-        for svc in page_rows:
-            sm = (svc or {}).get("service_materials") or {}
-            sm_data = sm.get("data") if isinstance(sm, dict) else []
-            if isinstance(sm_data, list):
-                for sm_row in sm_data:
-                    mat = (sm_row or {}).get("material") or {}
-                    uuid = mat.get("uuid") or mat.get("id")
-                    if uuid and uuid not in materials_by_uuid:
-                        materials_by_uuid[uuid] = {
-                            "material_uuid": uuid,
-                            "name": mat.get("name"),
-                            "part_number": mat.get("part_number"),
-                            "unit_of_measure": mat.get("unit_of_measure"),
-                            "cost": mat.get("cost"),
-                            "price": mat.get("price"),
-                            "taxable": mat.get("taxable"),
-                            "material_category_name": mat.get("material_category_name"),
-                        }
+        # Normalize expected columns
+        # uuid is the primary key in API response; your table uses service_uuid
+        if "uuid" in df.columns:
+            df = df.rename(columns={"uuid": "service_uuid"})
 
-        # stop conditions
-        if total_pages is not None:
-            try:
-                if page >= int(total_pages):
-                    break
-            except Exception:
-                pass
+        # Make sure these exist even if missing from API
+        for col in ["service_uuid", "name", "task_number", "description", "price", "cost", "duration", "managed_by",
+                    "flat_rate_enabled", "taxable", "unit_of_measure", "category_name", "industry_name", "updated_at"]:
+            if col not in df.columns:
+                df[col] = None
 
-        if len(page_rows) < page_size:
+        df = df[
+            ["service_uuid", "name", "task_number", "description", "price", "cost", "duration", "managed_by",
+             "flat_rate_enabled", "taxable", "unit_of_measure", "category_name", "industry_name", "updated_at"]
+        ]
+
+        frames.append(df)
+
+        total_pages = payload.get("total_pages_count")
+        if max_pages and page >= max_pages:
+            break
+        if total_pages and page >= int(total_pages):
             break
 
         page += 1
 
-    print(f"[INGEST] pricebook fetched services={len(services)} materials={len(materials_by_uuid)}")
+    if not frames:
+        return pd.DataFrame(columns=[
+            "service_uuid","name","task_number","description","price","cost","duration","managed_by",
+            "flat_rate_enabled","taxable","unit_of_measure","category_name","industry_name","updated_at"
+        ])
+
+    return pd.concat(frames, ignore_index=True)
+
 
     # Flatten services
     flat_rows = []
