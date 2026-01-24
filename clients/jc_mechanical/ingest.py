@@ -101,6 +101,28 @@ def _request_with_retry(method: str, url: str, *, headers=None, params=None, tim
             _sleep_with_log(backoff, jitter=0.6)
 
 
+def fetch_json(url: str, params: dict | None = None, *, timeout: int = 30, max_retries: int = 6):
+    """GET a URL and return JSON.
+
+    This is a thin wrapper used by optional modules like pricebook ingestion.
+    It uses the same retry/backoff behavior as the rest of ingest.py.
+    """
+    resp = _request_with_retry(
+        "GET",
+        url,
+        headers=HEADERS,
+        params=params,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+    try:
+        return resp.json()
+    except Exception:
+        # Make debugging easier if the endpoint returns HTML or empty body
+        preview = (resp.text or "")[:500]
+        raise ValueError(f"Non-JSON response from {url}. HTTP {resp.status_code}. Body preview: {preview}")
+
+
 # -----------------------------
 # DuckDB setup
 # -----------------------------
