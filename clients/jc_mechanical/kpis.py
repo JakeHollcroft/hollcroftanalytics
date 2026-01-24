@@ -42,17 +42,21 @@ DB_FILE = PERSIST_DIR / "housecall_data.duckdb"
 # -----------------------------
 def ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """
-    Defensive only. Ingestion should be the source of truth.
-    This prevents read errors if a table is missing in early stages.
+    Only create read-side tables if the connection allows it.
+    In read-only mode, do nothing.
     """
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS metadata (
-            key VARCHAR PRIMARY KEY,
-            value VARCHAR
-        );
-        """
-    )
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS metadata (
+                key VARCHAR PRIMARY KEY,
+                value VARCHAR
+            );
+            """
+        )
+    except Exception:
+        # Common in Render: DB attached read-only; ingestion is responsible for schema creation anyway.
+        return
 
 
 # -----------------------------
@@ -289,11 +293,12 @@ def get_dashboard_kpis():
 def get_refresh_status():
     conn = duckdb.connect(DB_FILE, read_only=True)
     try:
-        row = conn.execute(
-            """
-            SELECT value FROM metadata WHERE key = 'last_refresh'
-            """
-        ).fetchone()
+        try:
+            row = conn.execute(
+                "SELECT value FROM metadata WHERE key = 'last_refresh'"
+            ).fetchone()
+        except Exception:
+            row = None
 
         last_refresh_iso = row[0] if row and row[0] else None
         last_refresh_display = ""
@@ -305,7 +310,6 @@ def get_refresh_status():
             except Exception:
                 last_refresh_display = str(last_refresh_iso)
 
-        # Simple throttle: allow refresh every 15 minutes (matches your existing pattern)
         now_utc = datetime.now(timezone.utc)
         min_interval = timedelta(minutes=15)
 
@@ -322,6 +326,5 @@ def get_refresh_status():
             "next_refresh": next_allowed.astimezone(CENTRAL_TZ).strftime("%b %d, %Y %I:%M %p %Z"),
             "last_refresh_display": last_refresh_display,
         }
-
     finally:
         conn.close()

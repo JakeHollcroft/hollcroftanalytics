@@ -18,6 +18,7 @@ import threading
 import time
 import requests
 from datetime import datetime, timezone
+import uuid
 
 # JC Mechanical ingestion + DB path
 from clients.jc_mechanical.ingest import run_ingestion
@@ -312,9 +313,22 @@ def dashboard():
         try:
             data = get_dashboard_kpis()
         except Exception as e:
+            error_id = uuid.uuid4().hex[:10]
+
+            current_app.logger.exception(
+                "KPI refresh failed",
+                extra={
+                    "error_id": error_id,
+                    "dashboard_key": current_user.dashboard_key,
+                    "user_id": getattr(current_user, "id", None),
+                    "username": getattr(current_user, "username", None),
+                },
+            )
+
             data = {
-                "kpi_error": f"KPI refresh error: {type(e).__name__}: {e}"
+                "kpi_error": f"KPI refresh error ({error_id}): {type(e).__name__}: {e}"
             }
+
 
 
     all_users = []
