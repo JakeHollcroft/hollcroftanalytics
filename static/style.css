@@ -2952,3 +2952,62 @@ footer {
   .jc-club-top{ grid-template-columns: 1fr; }
   .jc-club-stats{ grid-template-columns: 1fr; }
 }
+
+
+/* ---------------------------
+   Lead + Club stacked section
+---------------------------- */
+.jc-kpi-stack {
+    max-width: 1300px;
+    margin: 0 auto 30px;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px; /* spacing between Lead card and Club card */
+}
+
+/* ---------------------------------
+   Lead breakdown expander (buttony)
+---------------------------------- */
+.jc-lead-details > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.03);
+    font-weight: 750;
+}
+
+.jc-lead-details > summary::-webkit-details-marker { display: none; }
+.jc-lead-details > summary::marker { content: ""; }
+
+.jc-lead-summary-title {
+    display: inline-block;
+}
+
+.jc-lead-expander {
+    margin-left: auto;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 180, 255, 0.10);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.jc-lead-expander::after {
+    content: "▾";
+    margin-left: 8px;
+    opacity: 0.9;
+}
+
+details[open].jc-lead-details .jc-lead-expander-open { display: none; }
+details:not([open]).jc-lead-details .jc-lead-expander-close { display: none; }
+details[open].jc-lead-details .jc-lead-expander::after { content: "▴"; }
