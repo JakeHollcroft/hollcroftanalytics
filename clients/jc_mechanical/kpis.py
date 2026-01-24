@@ -1203,6 +1203,11 @@ def get_dashboard_kpis():
                 looks_like_id = ee["employee_name"].astype(str).str.match(r"^pro_[0-9a-f]{32}$", na=False)
                 ee.loc[looks_like_id, "employee_name"] = "Unassigned"
 
+                # Limit to YTD estimates only (prevents all-time estimates from inflating counts)
+                ee["estimate_id"] = ee["estimate_id"].astype(str)
+                ytd_ids = set(df_est_ytd["estimate_id"].astype(str).tolist())
+                ee = ee[ee["estimate_id"].isin(ytd_ids)].copy()
+
                 # Attach per-estimate outcome for rollups
                 # df_est_ytd is one row per estimate and contains the derived `outcome`
                 ee = ee.merge(
@@ -1227,6 +1232,7 @@ def get_dashboard_kpis():
                         "estimates": int(r["estimates"]),
                         "won": int(r["won"]),
                         "lost": int(r["lost"]),
+                        "pending": int(r.get("pending", 0)),
                         "win_rate": round(
                             (int(r["won"]) / (int(r["won"]) + int(r["lost"])) * 100.0),
                             1,
